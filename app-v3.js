@@ -1,11 +1,10 @@
 /* =========================================================
-   Influencer & Contract Manager  v2
+   Influencer & Contract Manager v3
    ========================================================= */
-
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "inf_contract_manager_v4";
+  const STORAGE_KEY = "inf_contract_manager_v5";
   const THEME_KEY = "inf_contract_theme";
   const STATES = ["Pending", "Done", "Account banned", "In progress"];
   const STATE_CLASS = {
@@ -17,10 +16,12 @@
 
   let data = { influencers: [], contracts: [] };
   let editing = null;
+  let lastDeleted = null;   // { type, row, index }
+  let lastSavedAt = null;
 
   /* ---------- HELPERS ---------- */
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -30,36 +31,86 @@
       .replace(/"/g, "&quot;");
   }
 
+  function svgIcon(name, size = 16) {
+    return `<svg class="icon-svg" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
+  }
+
+  /* ---------- TOAST (with optional undo) ---------- */
   let toastTimer;
-  function toast(msg) {
+  function toast(msg, opts = {}) {
     const el = $("#toast");
+    const msgEl = $("#toastMsg");
+    const iconEl = el.querySelector(".toast-icon");
+    const actionBtn = $("#toastAction");
     if (!el) return;
-    el.textContent = msg;
+
+    msgEl.textContent = msg;
+
+    // icon
+    if (iconEl) {
+      iconEl.innerHTML = `<use href="#i-${opts.icon || "check"}"/>`;
+      iconEl.style.color = opts.icon === "trash" ? "var(--danger)" : "var(--success)";
+    }
+
+    // action
+    if (opts.actionLabel && typeof opts.onAction === "function") {
+      actionBtn.hidden = false;
+      actionBtn.querySelector("span").textContent = opts.actionLabel;
+      actionBtn.onclick = () => {
+        opts.onAction();
+        hideToast();
+      };
+    } else {
+      actionBtn.hidden = true;
+      actionBtn.onclick = null;
+    }
+
     el.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
+    toastTimer = setTimeout(hideToast, opts.duration || 2600);
   }
+
+  function hideToast() {
+    const el = $("#toast");
+    if (el) el.classList.remove("show");
+  }
+
+  /* ---------- STATUS BAR ---------- */
+  function updateStatus(text) {
+    const el = $("#statusText");
+    if (el && text) el.textContent = text;
+  }
+  function updateLastSaved() {
+    const el = $("#lastSavedText");
+    if (!el) return;
+    if (!lastSavedAt) { el.textContent = "Not saved yet"; return; }
+    const diff = Math.floor((Date.now() - lastSavedAt) / 1000);
+    if (diff < 5) el.textContent = "Saved just now";
+    else if (diff < 60) el.textContent = `Saved ${diff}s ago`;
+    else if (diff < 3600) el.textContent = `Saved ${Math.floor(diff/60)}m ago`;
+    else el.textContent = `Saved at ${new Date(lastSavedAt).toLocaleTimeString()}`;
+  }
+  setInterval(updateLastSaved, 5000);
 
   /* ---------- THEME ---------- */
   function initTheme() {
-    const saved = localStorage.getItem(THEME_KEY) || "light";
+    let saved = localStorage.getItem(THEME_KEY);
+    if (!saved) {
+      saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
     applyTheme(saved);
-
     const btn = $("#themeToggle");
     if (btn) {
       btn.addEventListener("click", () => {
-        const current = document.documentElement.getAttribute("data-theme");
-        const next = current === "dark" ? "light" : "dark";
+        const cur = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
         applyTheme(next);
         localStorage.setItem(THEME_KEY, next);
       });
     }
   }
-
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
-    const icon = $("#themeIcon");
-    if (icon) icon.textContent = theme === "dark" ? "☀️" : "🌙";
   }
 
   /* ---------- STORAGE ---------- */
@@ -67,22 +118,19 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) data = JSON.parse(raw);
-    } catch (e) {
-      console.warn("Load failed", e);
-    }
-    if (!data || !Array.isArray(data.influencers)) data = { influencers: [], contracts: [] };
+    } catch (e) { console.warn("Load failed", e); }
+    if (!data || typeof data !== "object") data = { influencers: [], contracts: [] };
+    if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
   }
-
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.warn("Save failed", e);
-    }
+      lastSavedAt = Date.now();
+      updateLastSaved();
+    } catch (e) { console.warn("Save failed", e); }
     renderCounts();
   }
-
   function renderCounts() {
     const a = $("#infBadge");
     const b = $("#conBadge");
@@ -97,13 +145,14 @@
         $$(".tab").forEach(t => t.classList.remove("active"));
         $$(".tab-content").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-        const target = document.getElementById(tab.dataset.tab);
-        if (target) target.classList.add("active");
+        const t = document.getElementById(tab.dataset.tab);
+        if (t) t.classList.add("active");
+        updateStatus(tab.dataset.tab === "influencers" ? "Influencers" : "Contracts");
       });
     });
   }
 
-  /* ========== INFLUENCERS ========== */
+  /* ============ INFLUENCERS ============ */
   function addInfluencer() {
     data.influencers.push({
       date: new Date().toLocaleDateString(),
@@ -111,48 +160,82 @@
     });
     save();
     renderInfluencers();
-    toast("Influencer added");
+    toast("Influencer added", { icon: "check" });
   }
 
   function delInfluencer(i) {
-    if (!confirm("Delete this influencer?")) return;
+    const row = data.influencers[i];
+    if (!row) return;
+    lastDeleted = { type: "influencer", row: { ...row }, index: i };
     data.influencers.splice(i, 1);
     save();
     renderInfluencers();
-    toast("Deleted");
+    toast("Influencer deleted", {
+      icon: "trash",
+      actionLabel: "Undo",
+      duration: 6000,
+      onAction: undoDelete
+    });
+  }
+
+  function undoDelete() {
+    if (!lastDeleted) return;
+    const { type, row, index } = lastDeleted;
+    if (type === "influencer") {
+      data.influencers.splice(index, 0, row);
+      save();
+      renderInfluencers();
+    } else if (type === "contract") {
+      data.contracts.splice(index, 0, row);
+      save();
+      renderContracts();
+    }
+    lastDeleted = null;
+    toast("Restored", { icon: "check" });
   }
 
   function renderInfluencers() {
     const filter = ($("#infSearch")?.value || "").toLowerCase();
     const tbody = $("#infTable tbody");
     const cards = $("#infCards");
+    const empty = $("#infEmpty");
+    const wrap = $("#influencers .table-wrap");
     if (!tbody || !cards) return;
     tbody.innerHTML = "";
     cards.innerHTML = "";
+
+    let visible = 0;
 
     data.influencers.forEach((row, i) => {
       const hay = [row.tg, row.fbName, row.fbLink, row.notes]
         .map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
+      visible++;
 
       // Desktop row
       const tr = document.createElement("tr");
-      const fields = ["date", "tg", "fbName", "fbLink", "notes"];
-      fields.forEach(k => {
+      ["date", "tg", "fbName", "fbLink", "notes"].forEach(k => {
         const td = document.createElement("td");
         td.contentEditable = "true";
         td.dataset.k = k;
         td.innerText = row[k] || "";
         td.addEventListener("blur", () => {
-          data.influencers[i][k] = td.innerText.trim();
-          save();
+          if (data.influencers[i][k] !== td.innerText.trim()) {
+            data.influencers[i][k] = td.innerText.trim();
+            save();
+            flashCell(td);
+          }
+        });
+        td.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); }
         });
         tr.appendChild(td);
       });
       const delTd = document.createElement("td");
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn";
-      delBtn.textContent = "✕";
+      delBtn.title = "Delete";
+      delBtn.innerHTML = svgIcon("trash");
       delBtn.addEventListener("click", () => delInfluencer(i));
       delTd.appendChild(delBtn);
       tr.appendChild(delTd);
@@ -163,10 +246,14 @@
       card.className = "card";
       card.innerHTML = `
         <div class="card-head">
-          <div class="card-title">${esc(row.tg) || "—"}</div>
-          <button class="del-btn">✕</button>
+          <div style="min-width:0;flex:1">
+            <div class="card-title">${esc(row.tg) || "—"}</div>
+            <div class="card-sub">${esc(row.fbName) || "No FB name"}</div>
+          </div>
+          <div class="card-actions">
+            <button class="del-btn" title="Delete">${svgIcon("trash")}</button>
+          </div>
         </div>
-        <div class="card-sub">${esc(row.fbName) || "No FB name"}</div>
         <div class="card-sub">${esc(row.fbLink) || "No link"}</div>
       `;
       card.addEventListener("click", (e) => {
@@ -179,9 +266,36 @@
       });
       cards.appendChild(card);
     });
+
+    // Empty state
+    if (empty && wrap) {
+      if (visible === 0) {
+        wrap.querySelector("table").style.display = "none";
+        empty.hidden = false;
+        if (filter) {
+          empty.querySelector("h3").textContent = "No matches";
+          empty.querySelector("p").innerHTML = `Nothing found for "<strong>${esc(filter)}</strong>".`;
+        } else {
+          empty.querySelector("h3").textContent = "No influencers yet";
+          empty.querySelector("p").innerHTML = "Click <strong>Add Influencer</strong> to start tracking prospects.";
+        }
+      } else {
+        wrap.querySelector("table").style.display = "";
+        empty.hidden = true;
+      }
+    }
+    if (visible === 0 && data.influencers.length > 0 && !filter) {
+      // unlikely, ignore
+    }
+    // Mobile empty
+    if (visible === 0 && cards.parentElement) {
+      cards.innerHTML = filter
+        ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
+        : `<div class="empty-state"><h3>No influencers yet</h3><p>Tap <strong>Add Influencer</strong> to begin.</p></div>`;
+    }
   }
 
-  /* ========== CONTRACTS ========== */
+  /* ============ CONTRACTS ============ */
   function addContract() {
     data.contracts.push({
       agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
@@ -190,31 +304,43 @@
     });
     save();
     renderContracts();
-    toast("Contract added");
+    toast("Contract added", { icon: "check" });
   }
 
   function delContract(i) {
-    if (!confirm("Delete this contract?")) return;
+    const row = data.contracts[i];
+    if (!row) return;
+    lastDeleted = { type: "contract", row: { ...row }, index: i };
     data.contracts.splice(i, 1);
     save();
     renderContracts();
-    toast("Deleted");
+    toast("Contract deleted", {
+      icon: "trash",
+      actionLabel: "Undo",
+      duration: 6000,
+      onAction: undoDelete
+    });
   }
 
   function renderContracts() {
     const filter = ($("#conSearch")?.value || "").toLowerCase();
     const tbody = $("#conTable tbody");
     const cards = $("#conCards");
+    const empty = $("#conEmpty");
+    const wrap = $("#contracts .table-wrap");
     if (!tbody || !cards) return;
     tbody.innerHTML = "";
     cards.innerHTML = "";
+
+    let visible = 0;
 
     data.contracts.forEach((row, i) => {
       const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state]
         .map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
+      visible++;
 
-      // ----- Desktop row -----
+      // Desktop row
       const tr = document.createElement("tr");
       const textFields = [
         "agentLine", "taskPosted", "releaseTime", "updateTime", "contract",
@@ -226,8 +352,14 @@
         td.dataset.k = k;
         td.innerText = row[k] || "";
         td.addEventListener("blur", () => {
-          data.contracts[i][k] = td.innerText.trim();
-          save();
+          if (data.contracts[i][k] !== td.innerText.trim()) {
+            data.contracts[i][k] = td.innerText.trim();
+            save();
+            flashCell(td);
+          }
+        });
+        td.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); }
         });
         tr.appendChild(td);
       });
@@ -257,8 +389,14 @@
       myTgTd.dataset.k = "myTg";
       myTgTd.innerText = row.myTg || "";
       myTgTd.addEventListener("blur", () => {
-        data.contracts[i].myTg = myTgTd.innerText.trim();
-        save();
+        if (data.contracts[i].myTg !== myTgTd.innerText.trim()) {
+          data.contracts[i].myTg = myTgTd.innerText.trim();
+          save();
+          flashCell(myTgTd);
+        }
+      });
+      myTgTd.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); }
       });
       tr.appendChild(myTgTd);
 
@@ -266,34 +404,76 @@
       const delTd = document.createElement("td");
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn";
-      delBtn.textContent = "✕";
+      delBtn.title = "Delete";
+      delBtn.innerHTML = svgIcon("trash");
       delBtn.addEventListener("click", () => delContract(i));
       delTd.appendChild(delBtn);
       tr.appendChild(delTd);
 
       tbody.appendChild(tr);
 
-      // ----- Mobile card -----
+      // Mobile card
       const card = document.createElement("div");
       card.className = "card";
       card.innerHTML = `
         <div class="card-head">
-          <div>
+          <div style="min-width:0;flex:1">
             <div class="card-title">${esc(row.agentLine) || "—"}</div>
             <div class="card-sub">${esc(row.domain) || "No domain"}</div>
           </div>
-          <span class="state-badge ${STATE_CLASS[row.state] || ""}">${esc(row.state) || "Pending"}</span>
+          <div class="card-actions">
+            <span class="state-badge ${STATE_CLASS[row.state] || ""}">${esc(row.state) || "Pending"}</span>
+            <button class="del-btn" title="Delete">${svgIcon("trash")}</button>
+          </div>
         </div>
-        <div class="card-sub" style="margin-top:6px;">
-          Vlogger: ${esc(row.vloggerTg) || "—"} · Contract: ${esc(row.contract) || "—"}
-        </div>
+        <div class="card-sub">Vlogger: ${esc(row.vloggerTg) || "—"}</div>
+        <div class="card-sub">Contract: ${esc(row.contract) || "—"}</div>
       `;
-      card.addEventListener("click", () => openContractModal(i));
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".del-btn")) return;
+        openContractModal(i);
+      });
+      card.querySelector(".del-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        delContract(i);
+      });
       cards.appendChild(card);
     });
+
+    // Empty states
+    if (empty && wrap) {
+      if (visible === 0) {
+        wrap.querySelector("table").style.display = "none";
+        empty.hidden = false;
+        if (filter) {
+          empty.querySelector("h3").textContent = "No matches";
+          empty.querySelector("p").innerHTML = `Nothing found for "<strong>${esc(filter)}</strong>".`;
+        } else {
+          empty.querySelector("h3").textContent = "No contracts yet";
+          empty.querySelector("p").innerHTML = "Click <strong>Add Contract</strong> to create your first entry.";
+        }
+      } else {
+        wrap.querySelector("table").style.display = "";
+        empty.hidden = true;
+      }
+    }
+
+    if (visible === 0 && cards.parentElement) {
+      cards.innerHTML = filter
+        ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
+        : `<div class="empty-state"><h3>No contracts yet</h3><p>Tap <strong>Add Contract</strong> to begin.</p></div>`;
+    }
   }
 
-  /* ========== MODAL ========== */
+  function flashCell(td) {
+    td.classList.remove("flash");
+    // force reflow
+    void td.offsetWidth;
+    td.classList.add("flash");
+    setTimeout(() => td.classList.remove("flash"), 900);
+  }
+
+  /* ============ MODAL ============ */
   function openModal(title, fields, onSave) {
     editing = { onSave };
     const titleEl = $("#modalTitle");
@@ -327,6 +507,9 @@
         input.value = f.value || "";
       }
       input.dataset.k = f.key;
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); saveModal(); }
+      });
       wrap.appendChild(input);
       body.appendChild(wrap);
     });
@@ -335,7 +518,7 @@
     if (modal) modal.hidden = false;
 
     const first = body.querySelector("input, select");
-    if (first) setTimeout(() => first.focus(), 50);
+    if (first) setTimeout(() => first.focus(), 60);
   }
 
   function closeModal() {
@@ -356,11 +539,11 @@
       editing.onSave(values);
     } catch (e) {
       console.error("Save failed", e);
-      toast("Save failed");
+      toast("Save failed", { icon: "trash" });
       return;
     }
     closeModal();
-    toast("Saved");
+    toast("Saved", { icon: "check" });
   }
 
   function openInfluencerModal(i) {
@@ -402,14 +585,14 @@
     });
   }
 
-  /* ========== EXCEL ========== */
+  /* ============ EXCEL ============ */
   function downloadExcel() {
     if (!data.influencers.length && !data.contracts.length) {
-      toast("Nothing to export");
+      toast("Nothing to export", { icon: "trash" });
       return;
     }
     if (typeof XLSX === "undefined") {
-      alert("Excel library failed to load. Check your internet connection.");
+      toast("Excel library failed to load", { icon: "trash" });
       return;
     }
     const wb = XLSX.utils.book_new();
@@ -432,10 +615,10 @@
 
     const today = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `Influencer_Contracts_${today}.xlsx`);
-    toast("Excel downloaded");
+    toast("Excel downloaded", { icon: "check" });
   }
 
-  /* ========== JSON ========== */
+  /* ============ JSON ============ */
   function exportJson() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -446,7 +629,7 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast("Backup exported");
+    toast("Backup exported", { icon: "check" });
   }
 
   function importJson(file) {
@@ -457,21 +640,22 @@
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) {
           throw new Error("bad format");
         }
+        // Simple confirm — kept as native because it's destructive
         if (confirm("Replace ALL current data with this backup?")) {
           data = imported;
           save();
           renderInfluencers();
           renderContracts();
-          toast("Backup restored");
+          toast("Backup restored", { icon: "check" });
         }
       } catch (e) {
-        alert("Invalid backup file.");
+        toast("Invalid backup file", { icon: "trash" });
       }
     };
     reader.readAsText(file);
   }
 
-  /* ========== INIT ========== */
+  /* ============ INIT ============ */
   function init() {
     load();
     initTheme();
@@ -513,12 +697,30 @@
     }
 
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && modal && !modal.hidden) closeModal();
+      // Esc closes modal
+      if (e.key === "Escape" && modal && !modal.hidden) {
+        closeModal();
+        return;
+      }
+      // Ctrl/Cmd + K → focus search
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        const active = document.querySelector(".tab-content.active");
+        const s = active?.querySelector(".search");
+        if (s) s.focus();
+      }
+      // Ctrl/Cmd + Z → undo delete
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && lastDeleted) {
+        e.preventDefault();
+        undoDelete();
+      }
     });
 
     renderInfluencers();
     renderContracts();
     renderCounts();
+    updateLastSaved();
+    updateStatus("Influencers");
   }
 
   if (document.readyState === "loading") {
