@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Influencer & Contract Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="logo">IM</div>
+    <div>
+      <h1>Influencer Manager</h1>
+      <p class="subtitle">Track prospects & contracts</p>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="exportJson" class="btn ghost" title="Export JSON backup">
+      <span class="icon">💾</span><span class="label">Backup</span>
+    </button>
+    <label class="btn ghost" for="importJson" title="Import JSON backup">
+      <span class="icon">📂</span><span class="label">Restore</span>
+    </label>
+    <input type="file" id="importJson" accept=".json" hidden>
+    <button id="downloadExcel" class="btn primary" title="Download Excel">
+      <span class="icon">⬇</span><span class="label">Excel</span>
+    </button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="influencers">
+    <span>Influencers</span>
+    <span class="badge" id="infBadge">0</span>
+  </button>
+  <button class="tab" data-tab="contracts">
+    <span>Contracts</span>
+    <span class="badge" id="conBadge">0</span>
+  </button>
+</nav>
+
+<main>
+
+  <!-- INFLUENCERS -->
+  <section id="influencers" class="tab-content active">
+    <div class="toolbar">
+      <button class="btn primary" onclick="addInfluencer()">+ Add Influencer</button>
+      <input type="search" id="infSearch" class="search" placeholder="Search...">
+    </div>
+
+    <div class="table-wrap desktop-only">
+      <table id="infTable">
+        <thead>
+          <tr>
+            <th>Date Added</th>
+            <th>TG Username</th>
+            <th>FB Name</th>
+            <th>FB Link</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card-list mobile-only" id="infCards"></div>
+  </section>
+
+  <!-- CONTRACTS -->
+  <section id="contracts" class="tab-content">
+    <div class="toolbar">
+      <button class="btn primary" onclick="addContract()">+ Add Contract</button>
+      <input type="search" id="conSearch" class="search" placeholder="Search agent, domain, vlogger...">
+    </div>
+
+    <div class="table-wrap desktop-only">
+      <table id="conTable">
+        <thead>
+          <tr>
+            <th>Agent Line</th>
+            <th>Task Posted</th>
+            <th>Release Time</th>
+            <th>Update Time</th>
+            <th>Contract</th>
+            <th>1st Trans.</th>
+            <th>2nd Pay</th>
+            <th>3rd Pay</th>
+            <th>Vlogger TG</th>
+            <th>Domain</th>
+            <th>State</th>
+            <th>My TG</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card-list mobile-only" id="conCards"></div>
+  </section>
+
+</main>
+
+<!-- Mobile edit modal -->
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">Edit</h3>
+      <button class="btn ghost" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
