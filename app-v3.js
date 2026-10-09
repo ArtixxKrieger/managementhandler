@@ -1,5 +1,5 @@
 /* =========================================================
-   Influencer & Contract Manager v3
+   Influencer & Contract Manager v3.1
    ========================================================= */
 (function () {
   "use strict";
@@ -16,8 +16,9 @@
 
   let data = { influencers: [], contracts: [] };
   let editing = null;
-  let lastDeleted = null;   // { type, row, index }
+  let lastDeleted = null;
   let lastSavedAt = null;
+  let activeTab = "influencers";
 
   /* ---------- HELPERS ---------- */
   const $ = (s) => document.querySelector(s);
@@ -35,7 +36,17 @@
     return `<svg class="icon-svg" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
   }
 
-  /* ---------- TOAST (with optional undo) ---------- */
+  /* ---------- DATE UTILS ---------- */
+  // Returns MM-DD-YYYY
+  function todaySlug() {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  }
+
+  /* ---------- TOAST ---------- */
   let toastTimer;
   function toast(msg, opts = {}) {
     const el = $("#toast");
@@ -46,13 +57,11 @@
 
     msgEl.textContent = msg;
 
-    // icon
     if (iconEl) {
       iconEl.innerHTML = `<use href="#i-${opts.icon || "check"}"/>`;
       iconEl.style.color = opts.icon === "trash" ? "var(--danger)" : "var(--success)";
     }
 
-    // action
     if (opts.actionLabel && typeof opts.onAction === "function") {
       actionBtn.hidden = false;
       actionBtn.querySelector("span").textContent = opts.actionLabel;
@@ -142,25 +151,31 @@
   function initTabs() {
     $$(".tab").forEach(tab => {
       tab.addEventListener("click", () => {
+        const next = tab.dataset.tab;
+        if (next === activeTab) return;
+
         $$(".tab").forEach(t => t.classList.remove("active"));
         $$(".tab-content").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-        const t = document.getElementById(tab.dataset.tab);
-        if (t) t.classList.add("active");
-        updateStatus(tab.dataset.tab === "influencers" ? "Influencers" : "Contracts");
+        const target = document.getElementById(next);
+        if (target) target.classList.add("active");
+
+        activeTab = next;
+        updateStatus(next === "influencers" ? "Influencers" : "Contracts");
+
+        // Render ONLY the newly active tab
+        if (next === "influencers") renderInfluencers();
+        else renderContracts();
       });
     });
   }
 
   /* ============ INFLUENCERS ============ */
   function addInfluencer() {
-    data.influencers.push({
-      date: new Date().toLocaleDateString(),
-      tg: "", fbName: "", fbLink: "", notes: ""
-    });
+    data.influencers.push({ tg: "", fbName: "", fbLink: "", notes: "" });
     save();
     renderInfluencers();
-    toast("Influencer added", { icon: "check" });
+    toast("Influencer added");
   }
 
   function delInfluencer(i) {
@@ -191,7 +206,7 @@
       renderContracts();
     }
     lastDeleted = null;
-    toast("Restored", { icon: "check" });
+    toast("Restored");
   }
 
   function renderInfluencers() {
@@ -212,9 +227,9 @@
       if (filter && !hay.includes(filter)) return;
       visible++;
 
-      // Desktop row
+      // Desktop row (NO "Date Added" column)
       const tr = document.createElement("tr");
-      ["date", "tg", "fbName", "fbLink", "notes"].forEach(k => {
+      ["tg", "fbName", "fbLink", "notes"].forEach(k => {
         const td = document.createElement("td");
         td.contentEditable = "true";
         td.dataset.k = k;
@@ -246,7 +261,7 @@
       card.className = "card";
       card.innerHTML = `
         <div class="card-head">
-          <div style="min-width:0;flex:1">
+          <div class="card-body">
             <div class="card-title">${esc(row.tg) || "—"}</div>
             <div class="card-sub">${esc(row.fbName) || "No FB name"}</div>
           </div>
@@ -254,7 +269,7 @@
             <button class="del-btn" title="Delete">${svgIcon("trash")}</button>
           </div>
         </div>
-        <div class="card-sub">${esc(row.fbLink) || "No link"}</div>
+        ${row.fbLink ? `<div class="card-sub" style="margin-top:6px">${esc(row.fbLink)}</div>` : ""}
       `;
       card.addEventListener("click", (e) => {
         if (e.target.closest(".del-btn")) return;
@@ -267,10 +282,11 @@
       cards.appendChild(card);
     });
 
-    // Empty state
+    // Desktop empty state
     if (empty && wrap) {
+      const table = wrap.querySelector("table");
       if (visible === 0) {
-        wrap.querySelector("table").style.display = "none";
+        if (table) table.style.display = "none";
         empty.hidden = false;
         if (filter) {
           empty.querySelector("h3").textContent = "No matches";
@@ -280,14 +296,12 @@
           empty.querySelector("p").innerHTML = "Click <strong>Add Influencer</strong> to start tracking prospects.";
         }
       } else {
-        wrap.querySelector("table").style.display = "";
+        if (table) table.style.display = "";
         empty.hidden = true;
       }
     }
-    if (visible === 0 && data.influencers.length > 0 && !filter) {
-      // unlikely, ignore
-    }
-    // Mobile empty
+
+    // Mobile empty state
     if (visible === 0 && cards.parentElement) {
       cards.innerHTML = filter
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
@@ -304,7 +318,7 @@
     });
     save();
     renderContracts();
-    toast("Contract added", { icon: "check" });
+    toast("Contract added");
   }
 
   function delContract(i) {
@@ -415,19 +429,32 @@
       // Mobile card
       const card = document.createElement("div");
       card.className = "card";
+      const metaRows = [
+        ["Vlogger", row.vloggerTg],
+        ["Contract", row.contract],
+        ["Agent", row.agentLine],
+        ["My TG", row.myTg],
+      ].filter(([, v]) => v);
+
       card.innerHTML = `
         <div class="card-head">
-          <div style="min-width:0;flex:1">
-            <div class="card-title">${esc(row.agentLine) || "—"}</div>
-            <div class="card-sub">${esc(row.domain) || "No domain"}</div>
+          <div class="card-body">
+            <div class="card-title">${esc(row.domain) || "—"}</div>
+            ${row.taskPosted ? `<div class="card-sub">Task: ${esc(row.taskPosted)}</div>` : ""}
           </div>
           <div class="card-actions">
             <span class="state-badge ${STATE_CLASS[row.state] || ""}">${esc(row.state) || "Pending"}</span>
             <button class="del-btn" title="Delete">${svgIcon("trash")}</button>
           </div>
         </div>
-        <div class="card-sub">Vlogger: ${esc(row.vloggerTg) || "—"}</div>
-        <div class="card-sub">Contract: ${esc(row.contract) || "—"}</div>
+        ${metaRows.length ? `
+          <div class="card-meta">
+            ${metaRows.map(([k, v]) => `
+              <div class="card-meta-row">
+                <strong>${k}</strong>
+                <span>${esc(v)}</span>
+              </div>`).join("")}
+          </div>` : ""}
       `;
       card.addEventListener("click", (e) => {
         if (e.target.closest(".del-btn")) return;
@@ -440,10 +467,11 @@
       cards.appendChild(card);
     });
 
-    // Empty states
+    // Desktop empty state
     if (empty && wrap) {
+      const table = wrap.querySelector("table");
       if (visible === 0) {
-        wrap.querySelector("table").style.display = "none";
+        if (table) table.style.display = "none";
         empty.hidden = false;
         if (filter) {
           empty.querySelector("h3").textContent = "No matches";
@@ -453,11 +481,12 @@
           empty.querySelector("p").innerHTML = "Click <strong>Add Contract</strong> to create your first entry.";
         }
       } else {
-        wrap.querySelector("table").style.display = "";
+        if (table) table.style.display = "";
         empty.hidden = true;
       }
     }
 
+    // Mobile empty state
     if (visible === 0 && cards.parentElement) {
       cards.innerHTML = filter
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
@@ -467,7 +496,6 @@
 
   function flashCell(td) {
     td.classList.remove("flash");
-    // force reflow
     void td.offsetWidth;
     td.classList.add("flash");
     setTimeout(() => td.classList.remove("flash"), 900);
@@ -543,14 +571,13 @@
       return;
     }
     closeModal();
-    toast("Saved", { icon: "check" });
+    toast("Saved");
   }
 
   function openInfluencerModal(i) {
     const row = data.influencers[i];
     if (!row) return;
     openModal("Edit Influencer", [
-      { key: "date",   label: "Date Added",  value: row.date },
       { key: "tg",     label: "TG Username", value: row.tg },
       { key: "fbName", label: "FB Name",     value: row.fbName },
       { key: "fbLink", label: "FB Link",     value: row.fbLink },
@@ -585,51 +612,69 @@
     });
   }
 
-  /* ============ EXCEL ============ */
+  /* ============ EXCEL EXPORT ============ */
   function downloadExcel() {
-    if (!data.influencers.length && !data.contracts.length) {
-      toast("Nothing to export", { icon: "trash" });
-      return;
-    }
     if (typeof XLSX === "undefined") {
       toast("Excel library failed to load", { icon: "trash" });
       return;
     }
-    const wb = XLSX.utils.book_new();
 
-    const infData = data.influencers.map(r => ({
-      "Date Added": r.date, "TG Username": r.tg, "FB Name": r.fbName,
-      "FB Link": r.fbLink, "Notes": r.notes
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infData), "Influencers");
+    const dateSlug = todaySlug();
 
-    const conData = data.contracts.map(r => ({
-      "Agent Line": r.agentLine, "Task Posted": r.taskPosted,
-      "Release Time": r.releaseTime, "Update Time": r.updateTime,
-      "Contract": r.contract, "First Transaction": r.first,
-      "Second Payment": r.second, "Third Payment": r.third,
-      "Vlogger's Telegram": r.vloggerTg, "Promotional Domain": r.domain,
-      "State": r.state, "My Telegram Name": r.myTg
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(conData), "Contracts");
-
-    const today = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `Influencer_Contracts_${today}.xlsx`);
-    toast("Excel downloaded", { icon: "check" });
+    if (activeTab === "influencers") {
+      if (!data.influencers.length) {
+        toast("No influencers to export", { icon: "trash" });
+        return;
+      }
+      // NO "Date Added" column — only what's in the table
+      const rows = data.influencers.map(r => ({
+        "TG Username": r.tg,
+        "FB Name": r.fbName,
+        "FB Link": r.fbLink,
+        "Notes": r.notes
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Influencers");
+      XLSX.writeFile(wb, `influencers ${dateSlug}.xlsx`);
+      toast(`influencers ${dateSlug}.xlsx downloaded`);
+    } else {
+      if (!data.contracts.length) {
+        toast("No contracts to export", { icon: "trash" });
+        return;
+      }
+      const rows = data.contracts.map(r => ({
+        "Agent Line": r.agentLine,
+        "Task Posted": r.taskPosted,
+        "Release Time": r.releaseTime,
+        "Update Time": r.updateTime,
+        "Contract": r.contract,
+        "First Transaction": r.first,
+        "Second Payment": r.second,
+        "Third Payment": r.third,
+        "Vlogger's Telegram": r.vloggerTg,
+        "Promotional Domain": r.domain,
+        "State": r.state,
+        "My Telegram Name": r.myTg
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Contracts");
+      XLSX.writeFile(wb, `contracts ${dateSlug}.xlsx`);
+      toast(`contracts ${dateSlug}.xlsx downloaded`);
+    }
   }
 
-  /* ============ JSON ============ */
+  /* ============ JSON BACKUP ============ */
   function exportJson() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `backup_${todaySlug()}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast("Backup exported", { icon: "check" });
+    toast("Backup exported");
   }
 
   function importJson(file) {
@@ -640,13 +685,13 @@
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) {
           throw new Error("bad format");
         }
-        // Simple confirm — kept as native because it's destructive
         if (confirm("Replace ALL current data with this backup?")) {
           data = imported;
           save();
-          renderInfluencers();
-          renderContracts();
-          toast("Backup restored", { icon: "check" });
+          // Only render the active tab
+          if (activeTab === "influencers") renderInfluencers();
+          else renderContracts();
+          toast("Backup restored");
         }
       } catch (e) {
         toast("Invalid backup file", { icon: "trash" });
@@ -697,28 +742,25 @@
     }
 
     document.addEventListener("keydown", (e) => {
-      // Esc closes modal
       if (e.key === "Escape" && modal && !modal.hidden) {
         closeModal();
         return;
       }
-      // Ctrl/Cmd + K → focus search
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         const active = document.querySelector(".tab-content.active");
         const s = active?.querySelector(".search");
         if (s) s.focus();
       }
-      // Ctrl/Cmd + Z → undo delete
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && lastDeleted) {
         e.preventDefault();
         undoDelete();
       }
     });
 
-    renderInfluencers();
-    renderContracts();
+    // Render ONLY the active tab initially
     renderCounts();
+    renderInfluencers();   // activeTab defaults to "influencers"
     updateLastSaved();
     updateStatus("Influencers");
   }
