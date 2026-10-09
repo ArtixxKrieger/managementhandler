@@ -47,10 +47,9 @@
 
 <main>
 
-  <!-- INFLUENCERS -->
   <section id="influencers" class="tab-content active">
     <div class="toolbar">
-      <button class="btn primary" onclick="addInfluencer()">+ Add Influencer</button>
+      <button id="addInfBtn" class="btn primary">+ Add Influencer</button>
       <input type="search" id="infSearch" class="search" placeholder="Search...">
     </div>
 
@@ -73,10 +72,9 @@
     <div class="card-list mobile-only" id="infCards"></div>
   </section>
 
-  <!-- CONTRACTS -->
   <section id="contracts" class="tab-content">
     <div class="toolbar">
-      <button class="btn primary" onclick="addContract()">+ Add Contract</button>
+      <button id="addConBtn" class="btn primary">+ Add Contract</button>
       <input type="search" id="conSearch" class="search" placeholder="Search agent, domain, vlogger...">
     </div>
 
@@ -108,17 +106,16 @@
 
 </main>
 
-<!-- Mobile edit modal -->
 <div class="modal-backdrop" id="modal" hidden>
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h3 id="modalTitle">Edit</h3>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button type="button" class="btn ghost" id="modalCloseX" aria-label="Close">✕</button>
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-foot">
-      <button class="btn ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn primary" id="modalSave">Save</button>
+      <button type="button" class="btn ghost" id="modalCancel">Cancel</button>
+      <button type="button" class="btn primary" id="modalSave">Save</button>
     </div>
   </div>
 </div>
