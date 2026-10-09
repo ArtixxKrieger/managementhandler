@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="styles-v2.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -21,15 +21,18 @@
     </div>
   </div>
   <div class="actions">
+    <button id="themeToggle" class="btn ghost icon-btn" title="Toggle theme">
+      <span id="themeIcon">🌙</span>
+    </button>
     <button id="exportJson" class="btn ghost" title="Export JSON backup">
-      <span class="icon">💾</span><span class="label">Backup</span>
+      <span>💾</span><span class="label">Backup</span>
     </button>
     <label class="btn ghost" for="importJson" title="Import JSON backup">
-      <span class="icon">📂</span><span class="label">Restore</span>
+      <span>📂</span><span class="label">Restore</span>
     </label>
     <input type="file" id="importJson" accept=".json" hidden>
     <button id="downloadExcel" class="btn primary" title="Download Excel">
-      <span class="icon">⬇</span><span class="label">Excel</span>
+      <span>⬇</span><span class="label">Excel</span>
     </button>
   </div>
 </header>
@@ -110,7 +113,7 @@
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h3 id="modalTitle">Edit</h3>
-      <button type="button" class="btn ghost" id="modalCloseX" aria-label="Close">✕</button>
+      <button type="button" class="btn ghost icon-btn" id="modalCloseX" aria-label="Close">✕</button>
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-foot">
@@ -122,6 +125,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="script.js"></script>
+<script src="app-v2.js"></script>
 </body>
 </html>
