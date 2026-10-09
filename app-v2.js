@@ -387,4 +387,144 @@
       { key: "taskPosted",  label: "Task Posted",        value: row.taskPosted },
       { key: "releaseTime", label: "Release Time",       value: row.releaseTime },
       { key: "updateTime",  label: "Update Time",        value: row.updateTime },
-      { key: "contract",    label: "Contract",
+      { key: "contract",    label: "Contract",           value: row.contract },
+      { key: "first",       label: "First Transaction",  value: row.first },
+      { key: "second",      label: "Second Payment",     value: row.second },
+      { key: "third",       label: "Third Payment",      value: row.third },
+      { key: "vloggerTg",   label: "Vlogger's Telegram", value: row.vloggerTg },
+      { key: "domain",      label: "Promotional Domain", value: row.domain },
+      { key: "state",       label: "State", type: "select", options: STATES, value: row.state },
+      { key: "myTg",        label: "My Telegram Name",   value: row.myTg }
+    ], (v) => {
+      Object.assign(data.contracts[i], v);
+      save();
+      renderContracts();
+    });
+  }
+
+  /* ========== EXCEL ========== */
+  function downloadExcel() {
+    if (!data.influencers.length && !data.contracts.length) {
+      toast("Nothing to export");
+      return;
+    }
+    if (typeof XLSX === "undefined") {
+      alert("Excel library failed to load. Check your internet connection.");
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+
+    const infData = data.influencers.map(r => ({
+      "Date Added": r.date, "TG Username": r.tg, "FB Name": r.fbName,
+      "FB Link": r.fbLink, "Notes": r.notes
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infData), "Influencers");
+
+    const conData = data.contracts.map(r => ({
+      "Agent Line": r.agentLine, "Task Posted": r.taskPosted,
+      "Release Time": r.releaseTime, "Update Time": r.updateTime,
+      "Contract": r.contract, "First Transaction": r.first,
+      "Second Payment": r.second, "Third Payment": r.third,
+      "Vlogger's Telegram": r.vloggerTg, "Promotional Domain": r.domain,
+      "State": r.state, "My Telegram Name": r.myTg
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(conData), "Contracts");
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Influencer_Contracts_${today}.xlsx`);
+    toast("Excel downloaded");
+  }
+
+  /* ========== JSON ========== */
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Backup exported");
+  }
+
+  function importJson(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) {
+          throw new Error("bad format");
+        }
+        if (confirm("Replace ALL current data with this backup?")) {
+          data = imported;
+          save();
+          renderInfluencers();
+          renderContracts();
+          toast("Backup restored");
+        }
+      } catch (e) {
+        alert("Invalid backup file.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* ========== INIT ========== */
+  function init() {
+    load();
+    initTheme();
+    initTabs();
+
+    const bind = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("click", fn);
+    };
+
+    bind("addInfBtn", addInfluencer);
+    bind("addConBtn", addContract);
+    bind("downloadExcel", downloadExcel);
+    bind("exportJson", exportJson);
+    bind("modalCloseX", closeModal);
+    bind("modalCancel", closeModal);
+    bind("modalSave", saveModal);
+
+    const importInput = $("#importJson");
+    if (importInput) {
+      importInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) importJson(file);
+        e.target.value = "";
+      });
+    }
+
+    const infSearch = $("#infSearch");
+    if (infSearch) infSearch.addEventListener("input", renderInfluencers);
+
+    const conSearch = $("#conSearch");
+    if (conSearch) conSearch.addEventListener("input", renderContracts);
+
+    const modal = $("#modal");
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeModal();
+      });
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal && !modal.hidden) closeModal();
+    });
+
+    renderInfluencers();
+    renderContracts();
+    renderCounts();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+
+})();
