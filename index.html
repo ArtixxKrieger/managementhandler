@@ -7,42 +7,127 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles-v2.css">
+<link rel="stylesheet" href="styles-v3.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
+<!-- ============ SVG ICON SPRITE ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+      <polyline points="17 21 17 13 7 13 7 21"/>
+      <polyline points="7 3 7 8 15 8"/>
+    </symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6M14 11v6"/>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="13" y2="17"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 7v6h6"/>
+      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+    </symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ HEADER ============ -->
 <header class="app-header">
   <div class="brand">
-    <div class="logo">IM</div>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/>
+      </svg>
+    </div>
     <div>
       <h1>Influencer Manager</h1>
-      <p class="subtitle">Track prospects & contracts</p>
+      <p class="subtitle">
+        <span id="statusText">Ready</span>
+        <span class="dot"></span>
+        <span id="lastSavedText">Not saved yet</span>
+      </p>
     </div>
   </div>
   <div class="actions">
-    <button id="themeToggle" class="btn ghost icon-btn" title="Toggle theme">
-      <span id="themeIcon">🌙</span>
+    <button id="themeToggle" class="btn ghost icon-btn" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-svg icon-sun"><use href="#i-sun"/></svg>
+      <svg class="icon-svg icon-moon"><use href="#i-moon"/></svg>
     </button>
     <button id="exportJson" class="btn ghost" title="Export JSON backup">
-      <span>💾</span><span class="label">Backup</span>
+      <svg class="icon-svg"><use href="#i-save"/></svg>
+      <span class="label">Backup</span>
     </button>
     <label class="btn ghost" for="importJson" title="Import JSON backup">
-      <span>📂</span><span class="label">Restore</span>
+      <svg class="icon-svg"><use href="#i-upload"/></svg>
+      <span class="label">Restore</span>
     </label>
     <input type="file" id="importJson" accept=".json" hidden>
     <button id="downloadExcel" class="btn primary" title="Download Excel">
-      <span>⬇</span><span class="label">Excel</span>
+      <svg class="icon-svg"><use href="#i-download"/></svg>
+      <span class="label">Export Excel</span>
     </button>
   </div>
 </header>
 
+<!-- ============ TABS ============ -->
 <nav class="tabs">
   <button class="tab active" data-tab="influencers">
+    <svg class="icon-svg"><use href="#i-users"/></svg>
     <span>Influencers</span>
     <span class="badge" id="infBadge">0</span>
   </button>
   <button class="tab" data-tab="contracts">
+    <svg class="icon-svg"><use href="#i-file"/></svg>
     <span>Contracts</span>
     <span class="badge" id="conBadge">0</span>
   </button>
@@ -50,10 +135,17 @@
 
 <main>
 
+  <!-- ============ INFLUENCERS ============ -->
   <section id="influencers" class="tab-content active">
     <div class="toolbar">
-      <button id="addInfBtn" class="btn primary">+ Add Influencer</button>
-      <input type="search" id="infSearch" class="search" placeholder="Search...">
+      <button id="addInfBtn" class="btn primary">
+        <svg class="icon-svg"><use href="#i-plus"/></svg>
+        <span>Add Influencer</span>
+      </button>
+      <div class="search-wrap">
+        <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+        <input type="search" id="infSearch" class="search" placeholder="Search influencers… (Ctrl+K)">
+      </div>
     </div>
 
     <div class="table-wrap desktop-only">
@@ -65,20 +157,37 @@
             <th>FB Name</th>
             <th>FB Link</th>
             <th>Notes</th>
-            <th></th>
+            <th class="col-action"></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
+      <div class="empty-state" id="infEmpty" hidden>
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <h3>No influencers yet</h3>
+        <p>Click <strong>Add Influencer</strong> to start tracking prospects.</p>
+      </div>
     </div>
 
     <div class="card-list mobile-only" id="infCards"></div>
   </section>
 
+  <!-- ============ CONTRACTS ============ -->
   <section id="contracts" class="tab-content">
     <div class="toolbar">
-      <button id="addConBtn" class="btn primary">+ Add Contract</button>
-      <input type="search" id="conSearch" class="search" placeholder="Search agent, domain, vlogger...">
+      <button id="addConBtn" class="btn primary">
+        <svg class="icon-svg"><use href="#i-plus"/></svg>
+        <span>Add Contract</span>
+      </button>
+      <div class="search-wrap">
+        <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+        <input type="search" id="conSearch" class="search" placeholder="Search contracts… (Ctrl+K)">
+      </div>
     </div>
 
     <div class="table-wrap desktop-only">
@@ -97,11 +206,19 @@
             <th>Domain</th>
             <th>State</th>
             <th>My TG</th>
-            <th></th>
+            <th class="col-action"></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
+      <div class="empty-state" id="conEmpty" hidden>
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <h3>No contracts yet</h3>
+        <p>Click <strong>Add Contract</strong> to create your first entry.</p>
+      </div>
     </div>
 
     <div class="card-list mobile-only" id="conCards"></div>
@@ -109,22 +226,36 @@
 
 </main>
 
+<!-- ============ MODAL ============ -->
 <div class="modal-backdrop" id="modal" hidden>
-  <div class="modal" role="dialog" aria-modal="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-head">
       <h3 id="modalTitle">Edit</h3>
-      <button type="button" class="btn ghost icon-btn" id="modalCloseX" aria-label="Close">✕</button>
+      <button type="button" class="btn ghost icon-btn" id="modalCloseX" aria-label="Close">
+        <svg class="icon-svg"><use href="#i-x"/></svg>
+      </button>
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="modalCancel">Cancel</button>
-      <button type="button" class="btn primary" id="modalSave">Save</button>
+      <button type="button" class="btn primary" id="modalSave">
+        <svg class="icon-svg"><use href="#i-check"/></svg>
+        <span>Save</span>
+      </button>
     </div>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
+<!-- ============ TOAST ============ -->
+<div id="toast" class="toast" role="status" aria-live="polite">
+  <svg class="icon-svg toast-icon"><use href="#i-check"/></svg>
+  <span id="toastMsg">Saved</span>
+  <button id="toastAction" class="toast-action" hidden>
+    <svg class="icon-svg"><use href="#i-undo"/></svg>
+    <span>Undo</span>
+  </button>
+</div>
 
-<script src="app-v2.js"></script>
+<script src="app-v3.js"></script>
 </body>
 </html>
