@@ -1,9 +1,3 @@
-/* =========================================================
-   Influencer & Contract Manager v5.4
-   - Dual history key support (inf_contract_history + alt)
-   - _id-based row tracking (no more "no username" bug)
-   - Auto-repair on load
-   ========================================================= */
 (function () {
   "use strict";
 
@@ -17,12 +11,13 @@
   const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
   const HISTORY_LIMIT = 20000;
 
-  const STATES = ["Pending", "Done", "Account banned", "In progress"];
+  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer"];
   const STATE_CLASS = {
     "Done": "state-done",
     "Account banned": "state-banned",
     "Pending": "state-pending",
-    "In progress": "state-progress"
+    "In progress": "state-progress",
+    "Scammer": "state-scammer"
   };
 
   let data = { influencers: [], contracts: [] };
@@ -85,7 +80,6 @@
     return new Date(ts).toLocaleDateString();
   }
 
-  /* ---------- HISTORY ---------- */
   function stripId(row) {
     const copy = { ...row };
     delete copy._id;
@@ -366,7 +360,6 @@
     }
   }
 
-  /* ---------- TOAST ---------- */
   let toastTimer;
   function toast(msg, opts = {}) {
     const el = $("#toast");
@@ -434,7 +427,6 @@
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
   }
 
-  /* ---------- LOAD + REPAIR ---------- */
   function load() {
     let loaded = false;
     try {
@@ -470,11 +462,9 @@
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
-    // Ensure every live row has a stable _id
     data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
     data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
 
-    // Load history from EITHER key (whichever has more)
     let historyRaw = null;
     try {
       const a = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
@@ -487,9 +477,7 @@
 
     if (historyRaw) {
       history = historyRaw.filter(h => h && h.entity && h.data).map(h => {
-        // If already has rowId, keep it
         if (h.rowId) return h;
-        // Otherwise, try to match to a live row
         let match = null;
         if (h.entity === "influencer") {
           match = data.influencers.find(r =>
@@ -509,7 +497,6 @@
         return h;
       });
 
-      // Second pass: for any history entry with rowId, refresh from live data
       history.forEach(h => {
         if (!h.rowId) return;
         let live = null;
@@ -518,7 +505,6 @@
         if (live) h.data = stripId(live);
       });
 
-      // Save repaired history to BOTH keys
       saveHistory();
     }
     if (!Array.isArray(history)) history = [];
@@ -614,7 +600,6 @@
     });
   }
 
-  /* ============ INFLUENCERS ============ */
   function addInfluencer() {
     const row = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
     data.influencers.push(row);
@@ -726,7 +711,6 @@
     }
   }
 
-  /* ============ CONTRACTS ============ */
   function addContract() {
     const row = {
       _id: uid(),
@@ -986,7 +970,6 @@
     });
   }
 
-  /* ============ CSV ============ */
   function parseCSV(text) {
     const rows = [];
     let cur = [], field = "", inQuotes = false;
@@ -1105,7 +1088,6 @@
     closeCsvModal();
   }
 
-  /* ============ EXCEL ============ */
   function downloadExcel() {
     if (typeof XLSX === "undefined") { toast("Excel library failed to load", { icon: "trash" }); return; }
     const dateSlug = todaySlug();
