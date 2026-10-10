@@ -268,11 +268,13 @@ main { padding: 0 24px 60px; }
   max-height: calc(100vh - 260px);
 }
 table { width: 100%; border-collapse: collapse; min-width: max-content; }
+
 th, td {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   font-size: 13px;
+  line-height: 1.4;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -299,13 +301,27 @@ td[contenteditable="true"] {
   outline: none;
   min-width: 90px;
   cursor: text;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  color: var(--text) !important;
+  font-weight: 400 !important;
+  line-height: 1.4 !important;
   border-radius: 6px;
   transition: background .15s, box-shadow .15s;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 td[contenteditable="true"]:hover { background: var(--surface-2); }
 td[contenteditable="true"]:focus {
   background: var(--primary-soft);
   box-shadow: inset 0 0 0 2px var(--primary);
+}
+td[contenteditable="true"] * {
+  font-size: inherit !important;
+  font-family: inherit !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
 }
 td.flash {
   animation: cellFlash .8s ease;
@@ -661,37 +677,28 @@ tbody tr:hover .del-btn { opacity: 1; }
 }
 .hist-section-head svg { width: 14px; height: 14px; }
 
-.hist-row {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  transition: border-color .15s, box-shadow .15s;
+.hist-table-wrap {
+  max-height: none;
 }
-.hist-row:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
-}
-.hist-row-main {
-  font-weight: 600;
-  font-size: 13.5px;
-  word-break: break-word;
-  margin-bottom: 3px;
-}
-.hist-row-sub {
-  color: var(--text-muted);
+
+.hist-table th,
+.hist-table td {
   font-size: 12.5px;
-  word-break: break-word;
-  line-height: 1.55;
+  padding: 8px 12px;
 }
-.hist-row-meta {
+
+.hist-time-cell {
   color: var(--text-faint);
   font-size: 11.5px;
-  margin-top: 5px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+}
+
+.hist-link {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--primary);
+}
+.hist-link:hover {
+  border-bottom-style: solid;
 }
 
 .hist-empty {
