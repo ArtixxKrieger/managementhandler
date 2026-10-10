@@ -20,6 +20,9 @@
     "Scammer": "state-scammer"
   };
 
+  const INF_FIELDS = ["tg", "fbName", "fbLink", "remarks"];
+  const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
+
   let data = { influencers: [], contracts: [] };
   let history = [];
   let prefs = { lastMyTg: "" };
@@ -88,11 +91,11 @@
 
   function isEmptyInfluencer(d) {
     if (!d) return true;
-    return !((d.tg || "").trim()) && !((d.fbName || "").trim()) && !((d.fbLink || "").trim());
+    return !((d.tg || "").trim()) && !((d.fbName || "").trim()) && !((d.fbLink || "").trim()) && !((d.remarks || "").trim());
   }
   function isEmptyContract(d) {
     if (!d) return true;
-    return !((d.agentLine || "").trim()) && !((d.domain || "").trim()) && !((d.vloggerTg || "").trim()) && !((d.myTg || "").trim()) && !((d.contract || "").trim());
+    return !((d.agentLine || "").trim()) && !((d.domain || "").trim()) && !((d.vloggerTg || "").trim()) && !((d.myTg || "").trim()) && !((d.contract || "").trim()) && !((d.remarks || "").trim());
   }
 
   function logHistory(entity, row) {
@@ -139,12 +142,8 @@
     const before = history.length;
     history = history.filter(h => {
       if (!h || !h.entity || !h.data) return false;
-      if (h.entity === "influencer") {
-        if (isEmptyInfluencer(h.data)) return false;
-      } else {
-        if (isEmptyContract(h.data)) return false;
-      }
-      return true;
+      if (h.entity === "influencer") return !isEmptyInfluencer(h.data);
+      return !isEmptyContract(h.data);
     });
     if (history.length !== before) saveHistory();
     return before - history.length;
@@ -212,8 +211,8 @@
         return all.some(h => {
           const d = h.data;
           const hay = h.entity === "influencer"
-            ? [d.tg, d.fbName, d.fbLink, d.notes].join(" ").toLowerCase()
-            : [d.agentLine, d.domain, d.vloggerTg, d.myTg, d.contract, d.state].join(" ").toLowerCase();
+            ? [d.tg, d.fbName, d.fbLink, d.remarks].join(" ").toLowerCase()
+            : [d.agentLine, d.domain, d.vloggerTg, d.myTg, d.contract, d.state, d.remarks].join(" ").toLowerCase();
           return hay.includes(searchFilter);
         });
       });
@@ -339,7 +338,7 @@
                   <th>TG Username</th>
                   <th>FB Name</th>
                   <th>FB Link</th>
-                  <th>Notes</th>
+                  <th>Remarks</th>
                   <th>Time</th>
                 </tr>
               </thead>
@@ -356,7 +355,7 @@
           <td>${esc(r.tg) || "—"}</td>
           <td>${esc(r.fbName) || "—"}</td>
           <td>${r.fbLink ? `<a href="${esc(r.fbLink)}" target="_blank" rel="noopener" class="hist-link">${esc(r.fbLink)}</a>` : "—"}</td>
-          <td>${esc(r.notes) || "—"}</td>
+          <td>${esc(r.remarks) || "—"}</td>
           <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
         tbody.appendChild(tr);
@@ -377,7 +376,6 @@
                   <th>Agent Line</th>
                   <th>Task Posted</th>
                   <th>Release Time</th>
-                  <th>Update Time</th>
                   <th>Contract</th>
                   <th>1st</th>
                   <th>2nd</th>
@@ -386,6 +384,7 @@
                   <th>Domain</th>
                   <th>State</th>
                   <th>My TG</th>
+                  <th>Remarks</th>
                   <th>Time</th>
                 </tr>
               </thead>
@@ -402,7 +401,6 @@
           <td>${esc(r.agentLine) || "—"}</td>
           <td>${esc(r.taskPosted) || "—"}</td>
           <td>${esc(r.releaseTime) || "—"}</td>
-          <td>${esc(r.updateTime) || "—"}</td>
           <td>${esc(r.contract) || "—"}</td>
           <td>${esc(r.first) || "—"}</td>
           <td>${esc(r.second) || "—"}</td>
@@ -411,6 +409,7 @@
           <td>${r.domain ? `<a href="${esc(r.domain)}" target="_blank" rel="noopener" class="hist-link">${esc(r.domain)}</a>` : "—"}</td>
           <td>${r.state ? `<span class="state-badge ${STATE_CLASS[r.state]||''}">${esc(r.state)}</span>` : "—"}</td>
           <td>${esc(r.myTg) || "—"}</td>
+          <td>${esc(r.remarks) || "—"}</td>
           <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
         tbody.appendChild(tr);
@@ -495,6 +494,35 @@
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
   }
 
+  function migrateRow(row, entity) {
+    if (entity === "influencer") {
+      const migrated = {
+        _id: row._id || uid(),
+        tg: row.tg || "",
+        fbName: row.fbName || "",
+        fbLink: row.fbLink || "",
+        remarks: row.remarks || row.notes || ""
+      };
+      return migrated;
+    } else {
+      return {
+        _id: row._id || uid(),
+        agentLine: row.agentLine || "",
+        taskPosted: row.taskPosted || "",
+        releaseTime: row.releaseTime || "",
+        contract: row.contract || "",
+        first: row.first || "",
+        second: row.second || "",
+        third: row.third || "",
+        vloggerTg: row.vloggerTg || "",
+        domain: row.domain || "",
+        state: row.state || "Pending",
+        myTg: row.myTg || "",
+        remarks: row.remarks || ""
+      };
+    }
+  }
+
   function load() {
     let loaded = false;
     try {
@@ -529,8 +557,8 @@
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
-    data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
-    data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
+    data.influencers = data.influencers.map(r => migrateRow(r, "influencer"));
+    data.contracts = data.contracts.map(r => migrateRow(r, "contract"));
 
     let historyRaw = null;
     try {
@@ -544,6 +572,29 @@
 
     if (historyRaw) {
       history = historyRaw.filter(h => h && h.entity && h.data).map(h => {
+        if (h.entity === "influencer") {
+          h.data = {
+            tg: h.data.tg || "",
+            fbName: h.data.fbName || "",
+            fbLink: h.data.fbLink || "",
+            remarks: h.data.remarks || h.data.notes || ""
+          };
+        } else {
+          h.data = {
+            agentLine: h.data.agentLine || "",
+            taskPosted: h.data.taskPosted || "",
+            releaseTime: h.data.releaseTime || "",
+            contract: h.data.contract || "",
+            first: h.data.first || "",
+            second: h.data.second || "",
+            third: h.data.third || "",
+            vloggerTg: h.data.vloggerTg || "",
+            domain: h.data.domain || "",
+            state: h.data.state || "Pending",
+            myTg: h.data.myTg || "",
+            remarks: h.data.remarks || ""
+          };
+        }
         if (h.rowId) return h;
         let match = null;
         if (h.entity === "influencer") {
@@ -576,6 +627,7 @@
 
     const removed = cleanupHistory();
     if (removed > 0) console.info(`Cleaned ${removed} empty history entries`);
+    save();
   }
 
   function save() {
@@ -668,8 +720,39 @@
     });
   }
 
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function scrambleInfluencers() {
+    if (data.influencers.length < 2) { toast("Not enough rows to scramble"); return; }
+    if (!confirm("Scramble the order of influencers?\n\nRows will be shuffled randomly. Data stays with its row.")) return;
+    data.influencers = shuffleArray(data.influencers);
+    infSort.key = null;
+    updateSortIcons("#infTable", infSort);
+    save();
+    renderInfluencers();
+    toast("Influencers scrambled");
+  }
+
+  function scrambleContracts() {
+    if (data.contracts.length < 2) { toast("Not enough rows to scramble"); return; }
+    if (!confirm("Scramble the order of contracts?\n\nRows will be shuffled randomly. Data stays with its row.")) return;
+    data.contracts = shuffleArray(data.contracts);
+    conSort.key = null;
+    updateSortIcons("#conTable", conSort);
+    save();
+    renderContracts();
+    toast("Contracts scrambled");
+  }
+
   function addInfluencer() {
-    const row = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
+    const row = { _id: uid(), tg: "", fbName: "", fbLink: "", remarks: "" };
     data.influencers.push(row);
     save();
     renderInfluencers();
@@ -708,12 +791,12 @@
 
     rows.forEach((row) => {
       const rowId = row._id;
-      const hay = [row.tg, row.fbName, row.fbLink, row.notes].map(v => (v || "").toLowerCase()).join(" ");
+      const hay = [row.tg, row.fbName, row.fbLink, row.remarks].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
 
       const tr = document.createElement("tr");
-      ["tg", "fbName", "fbLink", "notes"].forEach(k => {
+      INF_FIELDS.forEach(k => {
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
@@ -766,7 +849,7 @@
         empty.querySelector("h3").textContent = filter ? "No matches" : "No influencers yet";
         empty.querySelector("p").innerHTML = filter
           ? `Nothing found for "<strong>${esc(filter)}</strong>".`
-          : "Click <strong>Add Influencer</strong> or <strong>Import CSV</strong> to start.";
+          : "Click <strong>Add Influencer</strong>, <strong>Import CSV</strong>, or <strong>Import Excel</strong> to start.";
       } else {
         if (table) table.style.display = "";
         empty.hidden = true;
@@ -782,10 +865,10 @@
   function addContract() {
     const row = {
       _id: uid(),
-      agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
+      agentLine: "", taskPosted: "", releaseTime: "",
       contract: "", first: "", second: "", third: "",
       vloggerTg: "", domain: "", state: "Pending",
-      myTg: prefs.lastMyTg || ""
+      myTg: prefs.lastMyTg || "", remarks: ""
     };
     data.contracts.push(row);
     save(); renderContracts();
@@ -815,14 +898,13 @@
 
     rows.forEach((row) => {
       const rowId = row._id;
-      const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state]
+      const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state, row.remarks]
         .map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
 
       const tr = document.createElement("tr");
-      const textFields = ["agentLine","taskPosted","releaseTime","updateTime","contract","first","second","third","vloggerTg","domain"];
-      textFields.forEach(k => {
+      CON_TEXT_FIELDS.forEach(k => {
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
@@ -878,6 +960,23 @@
       myTgTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); } });
       tr.appendChild(myTgTd);
 
+      const remarksTd = document.createElement("td");
+      remarksTd.contentEditable = "true"; remarksTd.dataset.k = "remarks";
+      remarksTd.innerHTML = escAndHighlight(row.remarks, filter);
+      remarksTd.addEventListener("blur", () => {
+        const newVal = remarksTd.innerText.trim();
+        const live = data.contracts.find(r => r._id === rowId);
+        if (!live) return;
+        if (live.remarks !== newVal) {
+          live.remarks = newVal;
+          save(); flashCell(remarksTd);
+          updateHistorySnapshot("contract", live);
+        }
+        remarksTd.innerHTML = escAndHighlight(live.remarks, filter);
+      });
+      remarksTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); remarksTd.blur(); } });
+      tr.appendChild(remarksTd);
+
       const delTd = document.createElement("td");
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn"; delBtn.title = "Delete";
@@ -892,7 +991,8 @@
         ["Vlogger", row.vloggerTg],
         ["Contract", row.contract],
         ["Agent", row.agentLine],
-        ["My TG", row.myTg]
+        ["My TG", row.myTg],
+        ["Remarks", row.remarks]
       ].filter(([, v]) => v);
       card.innerHTML = `
         <div class="card-head">
@@ -927,7 +1027,7 @@
         empty.querySelector("h3").textContent = filter ? "No matches" : "No contracts yet";
         empty.querySelector("p").innerHTML = filter
           ? `Nothing found for "<strong>${esc(filter)}</strong>".`
-          : "Click <strong>Add Contract</strong> or <strong>Import CSV</strong>.";
+          : "Click <strong>Add Contract</strong>, <strong>Import CSV</strong>, or <strong>Import Excel</strong>.";
       } else {
         if (table) table.style.display = "";
         empty.hidden = true;
@@ -1004,10 +1104,10 @@
     const row = data.influencers.find(r => r._id === id);
     if (!row) return;
     openModal("Edit Influencer", [
-      { key: "tg",     label: "TG Username", value: row.tg },
-      { key: "fbName", label: "FB Name",     value: row.fbName },
-      { key: "fbLink", label: "FB Link",     value: row.fbLink },
-      { key: "notes",  label: "Notes",       value: row.notes }
+      { key: "tg",      label: "TG Username", value: row.tg },
+      { key: "fbName",  label: "FB Name",     value: row.fbName },
+      { key: "fbLink",  label: "FB Link",     value: row.fbLink },
+      { key: "remarks", label: "Remarks",     value: row.remarks }
     ], (v) => {
       Object.assign(row, v);
       save(); renderInfluencers();
@@ -1021,7 +1121,6 @@
       { key: "agentLine",   label: "Agent Line",         value: row.agentLine },
       { key: "taskPosted",  label: "Task Posted",        value: row.taskPosted },
       { key: "releaseTime", label: "Release Time",       value: row.releaseTime },
-      { key: "updateTime",  label: "Update Time",        value: row.updateTime },
       { key: "contract",    label: "Contract",           value: row.contract },
       { key: "first",       label: "First Transaction",  value: row.first },
       { key: "second",      label: "Second Payment",     value: row.second },
@@ -1029,7 +1128,8 @@
       { key: "vloggerTg",   label: "Vlogger's Telegram", value: row.vloggerTg },
       { key: "domain",      label: "Promotional Domain", value: row.domain },
       { key: "state",       label: "State", type: "select", options: STATES, value: row.state },
-      { key: "myTg",        label: "My Telegram Name",   value: row.myTg }
+      { key: "myTg",        label: "My Telegram Name",   value: row.myTg },
+      { key: "remarks",     label: "Remarks",            value: row.remarks }
     ], (v) => {
       Object.assign(row, v);
       if (v.myTg) { prefs.lastMyTg = v.myTg; savePrefs(); }
@@ -1057,6 +1157,112 @@
     if (field.length || cur.length) { cur.push(field); rows.push(cur); }
     return rows.filter(r => r.some(v => v.trim() !== ""));
   }
+
+  const INF_COL_MAP = {
+    "tg username": "tg", "tg": "tg", "telegram": "tg", "telegram username": "tg",
+    "fb name": "fbName", "fb": "fbName", "facebook name": "fbName", "name": "fbName",
+    "fb link": "fbLink", "link": "fbLink", "facebook link": "fbLink", "profile link": "fbLink",
+    "remarks": "remarks", "notes": "remarks", "note": "remarks", "remark": "remarks"
+  };
+
+  const CON_COL_MAP = {
+    "agent line": "agentLine", "agent": "agentLine", "agentline": "agentLine",
+    "task posted": "taskPosted", "task": "taskPosted", "taskposted": "taskPosted",
+    "release time": "releaseTime", "release": "releaseTime", "releasetime": "releaseTime",
+    "contract": "contract",
+    "first transaction": "first", "1st trans.": "first", "1st": "first", "first": "first",
+    "second payment": "second", "2nd pay": "second", "2nd": "second", "second": "second",
+    "third payment": "third", "3rd pay": "third", "3rd": "third", "third": "third",
+    "vlogger's telegram": "vloggerTg", "vlogger tg": "vloggerTg", "vlogger": "vloggerTg", "vloggertg": "vloggerTg",
+    "promotional domain": "domain", "domain": "domain",
+    "state": "state", "status": "state",
+    "my telegram name": "myTg", "my tg": "myTg", "mytelegram": "myTg", "my telegram": "myTg",
+    "remarks": "remarks", "notes": "remarks", "note": "remarks", "remark": "remarks"
+  };
+
+  function normalizeHeader(h) {
+    return String(h || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function importRowsToData(headers, bodyRows, target) {
+    let imported = 0;
+    const map = target === "influencers" ? INF_COL_MAP : CON_COL_MAP;
+
+    if (target === "influencers") {
+      bodyRows.forEach(r => {
+        const obj = { _id: uid(), tg: "", fbName: "", fbLink: "", remarks: "" };
+        headers.forEach((h, idx) => {
+          const key = map[normalizeHeader(h)];
+          if (key) obj[key] = String(r[idx] == null ? "" : r[idx]).trim();
+        });
+        if (obj.tg || obj.fbName || obj.fbLink || obj.remarks) {
+          data.influencers.push(obj);
+          logHistory("influencer", obj);
+          imported++;
+        }
+      });
+    } else {
+      bodyRows.forEach(r => {
+        const obj = {
+          _id: uid(),
+          agentLine: "", taskPosted: "", releaseTime: "",
+          contract: "", first: "", second: "", third: "",
+          vloggerTg: "", domain: "", state: "Pending", myTg: "", remarks: ""
+        };
+        headers.forEach((h, idx) => {
+          const key = map[normalizeHeader(h)];
+          if (!key) return;
+          const val = String(r[idx] == null ? "" : r[idx]).trim();
+          if (key === "state") {
+            const found = STATES.find(s => s.toLowerCase() === val.toLowerCase());
+            obj.state = found || "Pending";
+          } else obj[key] = val;
+        });
+        if (obj.agentLine || obj.domain || obj.vloggerTg || obj.myTg || obj.contract || obj.remarks) {
+          data.contracts.push(obj);
+          logHistory("contract", obj);
+          imported++;
+        }
+      });
+    }
+
+    save();
+    if (target === "influencers") renderInfluencers(); else renderContracts();
+    return imported;
+  }
+
+  function handleCsvText(text, target) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) { toast("Need headers + at least 1 row", { icon: "trash" }); return; }
+    const headers = rows[0].map(h => String(h).trim());
+    const bodyRows = rows.slice(1);
+    const imported = importRowsToData(headers, bodyRows, target);
+    toast(`Imported ${imported} row${imported===1?"":"s"}`);
+  }
+
+  function handleXlsxFile(file, target) {
+    if (typeof XLSX === "undefined") { toast("Excel library not loaded", { icon: "trash" }); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const sheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+        const cleaned = rows.filter(r => r.some(v => String(v).trim() !== ""));
+        if (cleaned.length < 2) { toast("File has no data rows", { icon: "trash" }); return; }
+        const headers = cleaned[0].map(h => String(h).trim());
+        const bodyRows = cleaned.slice(1);
+        const imported = importRowsToData(headers, bodyRows, target);
+        toast(`Imported ${imported} row${imported===1?"":"s"} from ${sheetName}`);
+      } catch (err) {
+        console.error(err);
+        toast("Failed to read file", { icon: "trash" });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   function openCsvModal(target) {
     csvImportTarget = target;
     const modal = $("#csvModal");
@@ -1089,70 +1295,7 @@
   function doCsvImport() {
     const text = $("#csvText")?.value || "";
     if (!text.trim()) { toast("Nothing to import", { icon: "trash" }); return; }
-    const rows = parseCSV(text);
-    if (rows.length < 2) { toast("Need headers + at least 1 row", { icon: "trash" }); return; }
-    const headers = rows[0].map(h => h.trim().toLowerCase());
-    const bodyRows = rows.slice(1);
-    let imported = 0;
-
-    if (csvImportTarget === "influencers") {
-      const map = {
-        "tg username": "tg", "tg": "tg", "telegram": "tg",
-        "fb name": "fbName", "fb": "fbName", "facebook name": "fbName",
-        "fb link": "fbLink", "link": "fbLink", "facebook link": "fbLink",
-        "notes": "notes", "note": "notes"
-      };
-      bodyRows.forEach(r => {
-        const obj = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
-        headers.forEach((h, idx) => { const key = map[h]; if (key) obj[key] = (r[idx] || "").trim(); });
-        if (obj.tg || obj.fbName || obj.fbLink || obj.notes) {
-          data.influencers.push(obj);
-          logHistory("influencer", obj);
-          imported++;
-        }
-      });
-    } else {
-      const map = {
-        "agent line": "agentLine", "agent": "agentLine",
-        "task posted": "taskPosted", "task": "taskPosted",
-        "release time": "releaseTime", "release": "releaseTime",
-        "update time": "updateTime", "update": "updateTime",
-        "contract": "contract",
-        "first transaction": "first", "1st trans.": "first", "first": "first",
-        "second payment": "second", "2nd pay": "second", "second": "second",
-        "third payment": "third", "3rd pay": "third", "third": "third",
-        "vlogger's telegram": "vloggerTg", "vlogger tg": "vloggerTg", "vlogger": "vloggerTg",
-        "promotional domain": "domain", "domain": "domain",
-        "state": "state",
-        "my telegram name": "myTg", "my tg": "myTg", "my telegram": "myTg"
-      };
-      bodyRows.forEach(r => {
-        const obj = {
-          _id: uid(),
-          agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
-          contract: "", first: "", second: "", third: "",
-          vloggerTg: "", domain: "", state: "Pending", myTg: ""
-        };
-        headers.forEach((h, idx) => {
-          const key = map[h];
-          if (key) {
-            const val = (r[idx] || "").trim();
-            if (key === "state") {
-              const found = STATES.find(s => s.toLowerCase() === val.toLowerCase());
-              obj.state = found || "Pending";
-            } else obj[key] = val;
-          }
-        });
-        if (obj.agentLine || obj.domain || obj.vloggerTg || obj.myTg || obj.contract) {
-          data.contracts.push(obj);
-          logHistory("contract", obj);
-          imported++;
-        }
-      });
-    }
-    save();
-    if (csvImportTarget === "influencers") renderInfluencers(); else renderContracts();
-    toast(`Imported ${imported} row${imported===1?"":"s"}`);
+    handleCsvText(text, csvImportTarget);
     closeCsvModal();
   }
 
@@ -1163,7 +1306,7 @@
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       const rows = data.influencers.map(r => ({
-        "TG Username": r.tg, "FB Name": r.fbName, "FB Link": r.fbLink, "Notes": r.notes
+        "TG Username": r.tg, "FB Name": r.fbName, "FB Link": r.fbLink, "Remarks": r.remarks
       }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Influencers");
@@ -1173,11 +1316,11 @@
       if (!data.contracts.length) { toast("No contracts to export", { icon: "trash" }); return; }
       const rows = data.contracts.map(r => ({
         "Agent Line": r.agentLine, "Task Posted": r.taskPosted,
-        "Release Time": r.releaseTime, "Update Time": r.updateTime,
+        "Release Time": r.releaseTime,
         "Contract": r.contract, "First Transaction": r.first,
         "Second Payment": r.second, "Third Payment": r.third,
         "Vlogger's Telegram": r.vloggerTg, "Promotional Domain": r.domain,
-        "State": r.state, "My Telegram Name": r.myTg
+        "State": r.state, "My Telegram Name": r.myTg, "Remarks": r.remarks
       }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Contracts");
@@ -1188,7 +1331,7 @@
 
   function exportHistoryCsv() {
     if (!history.length) { toast("No history to export", { icon: "trash" }); return; }
-    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Notes,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
+    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Remarks,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
     const lines = history.map(h => {
       const d = new Date(h.ts);
       const date = `${pad(d.getMonth()+1)}-${pad(d.getDate())}-${d.getFullYear()}`;
@@ -1196,7 +1339,7 @@
       const clean = (s) => `"${String(s||"").replace(/"/g, '""')}"`;
       if (h.entity === "influencer") {
         const r = h.data;
-        return [date, time, "influencer", clean(r.tg), clean(r.fbName), clean(r.fbLink), clean(r.notes), "", "", "", "", "", ""].join(",");
+        return [date, time, "influencer", clean(r.tg), clean(r.fbName), clean(r.fbLink), clean(r.remarks), "", "", "", "", "", ""].join(",");
       } else {
         const r = h.data;
         return [date, time, "contract", "", "", "", "", clean(r.agentLine), clean(r.domain), clean(r.vloggerTg), clean(r.contract), clean(r.state), clean(r.myTg)].join(",");
@@ -1230,10 +1373,13 @@
         const imported = JSON.parse(ev.target.result);
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
         if (confirm("Replace ALL current data with this backup?")) {
-          data = { influencers: imported.influencers, contracts: imported.contracts };
-          data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
-          data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
-          if (Array.isArray(imported._history)) history = imported._history.filter(h => h && h.entity && h.data);
+          data = {
+            influencers: imported.influencers.map(r => migrateRow(r, "influencer")),
+            contracts: imported.contracts.map(r => migrateRow(r, "contract"))
+          };
+          if (Array.isArray(imported._history)) {
+            history = imported._history.filter(h => h && h.entity && h.data);
+          }
           if (imported._prefs) prefs = Object.assign(prefs, imported._prefs);
           save(); savePrefs();
           cleanupHistory();
@@ -1284,6 +1430,8 @@
     bind("exportHistCsv", exportHistoryCsv);
     bind("histBackBtn", closeDayDetail);
     bind("histLoadMoreBtn", () => { histDaysShown += 30; renderHistory(); });
+    bind("scrambleInfBtn", scrambleInfluencers);
+    bind("scrambleConBtn", scrambleContracts);
     bind("clearHist", () => {
       if (!history.length) { toast("History already empty"); return; }
       if (confirm("Clear ALL history? This cannot be undone.")) {
@@ -1338,6 +1486,20 @@
       }
       e.target.value = "";
     });
+
+    const importInfXlsx = $("#importInfXlsx");
+    if (importInfXlsx) importInfXlsx.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) handleXlsxFile(file, "influencers");
+      e.target.value = "";
+    });
+    const importConXlsx = $("#importConXlsx");
+    if (importConXlsx) importConXlsx.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) handleXlsxFile(file, "contracts");
+      e.target.value = "";
+    });
+
     const csvText = $("#csvText");
     if (csvText) csvText.addEventListener("input", updateCsvPreview);
 
