@@ -86,6 +86,15 @@
     return copy;
   }
 
+  function isEmptyInfluencer(d) {
+    if (!d) return true;
+    return !((d.tg || "").trim()) && !((d.fbName || "").trim()) && !((d.fbLink || "").trim());
+  }
+  function isEmptyContract(d) {
+    if (!d) return true;
+    return !((d.agentLine || "").trim()) && !((d.domain || "").trim()) && !((d.vloggerTg || "").trim()) && !((d.myTg || "").trim()) && !((d.contract || "").trim());
+  }
+
   function logHistory(entity, row) {
     const ts = Date.now();
     history.unshift({
@@ -124,6 +133,21 @@
     const payload = JSON.stringify(history);
     try { localStorage.setItem(HISTORY_KEY, payload); } catch(e){}
     try { localStorage.setItem(HISTORY_KEY_ALT, payload); } catch(e){}
+  }
+
+  function cleanupHistory() {
+    const before = history.length;
+    history = history.filter(h => {
+      if (!h || !h.entity || !h.data) return false;
+      if (h.entity === "influencer") {
+        if (isEmptyInfluencer(h.data)) return false;
+      } else {
+        if (isEmptyContract(h.data)) return false;
+      }
+      return true;
+    });
+    if (history.length !== before) saveHistory();
+    return before - history.length;
   }
 
   function deleteDay(dateKey) {
@@ -303,51 +327,95 @@
     const showCon = histDetailFilter === "all" || histDetailFilter === "contracts";
 
     if (showInf && bucket.influencers.length) {
-      const sec = document.createElement("div");
-      sec.className = "hist-section";
-      sec.innerHTML = `<div class="hist-section-head">${svgIcon("users", 14)} Influencers · ${bucket.influencers.length}</div>`;
+      const section = document.createElement("div");
+      section.className = "hist-section";
+      section.innerHTML = `
+        <div class="hist-section-head">${svgIcon("users", 14)} Influencers · ${bucket.influencers.length}</div>
+        <div class="table-wrap hist-table-wrap">
+          <div class="table-scroll">
+            <table class="hist-table">
+              <thead>
+                <tr>
+                  <th>TG Username</th>
+                  <th>FB Name</th>
+                  <th>FB Link</th>
+                  <th>Notes</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      const tbody = section.querySelector("tbody");
       bucket.influencers.forEach(h => {
         const r = h.data;
-        const el = document.createElement("div");
-        el.className = "hist-row";
-        el.innerHTML = `
-          <div class="hist-row-main">${esc(r.tg) || "(no username)"}</div>
-          <div class="hist-row-sub">
-            ${r.fbName ? esc(r.fbName) : ""}
-            ${r.fbLink ? ` · ${esc(r.fbLink)}` : ""}
-            ${r.notes ? `<br>${esc(r.notes)}` : ""}
-          </div>
-          <div class="hist-row-meta">${svgIcon("clock", 11)} ${relativeTime(h.ts)}</div>
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(r.tg) || "—"}</td>
+          <td>${esc(r.fbName) || "—"}</td>
+          <td>${r.fbLink ? `<a href="${esc(r.fbLink)}" target="_blank" rel="noopener" class="hist-link">${esc(r.fbLink)}</a>` : "—"}</td>
+          <td>${esc(r.notes) || "—"}</td>
+          <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
-        sec.appendChild(el);
+        tbody.appendChild(tr);
       });
-      body.appendChild(sec);
+      body.appendChild(section);
     }
 
     if (showCon && bucket.contracts.length) {
-      const sec = document.createElement("div");
-      sec.className = "hist-section";
-      sec.innerHTML = `<div class="hist-section-head">${svgIcon("file", 14)} Contracts · ${bucket.contracts.length}</div>`;
+      const section = document.createElement("div");
+      section.className = "hist-section";
+      section.innerHTML = `
+        <div class="hist-section-head">${svgIcon("file", 14)} Contracts · ${bucket.contracts.length}</div>
+        <div class="table-wrap hist-table-wrap">
+          <div class="table-scroll">
+            <table class="hist-table">
+              <thead>
+                <tr>
+                  <th>Agent Line</th>
+                  <th>Task Posted</th>
+                  <th>Release Time</th>
+                  <th>Update Time</th>
+                  <th>Contract</th>
+                  <th>1st</th>
+                  <th>2nd</th>
+                  <th>3rd</th>
+                  <th>Vlogger TG</th>
+                  <th>Domain</th>
+                  <th>State</th>
+                  <th>My TG</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      const tbody = section.querySelector("tbody");
       bucket.contracts.forEach(h => {
         const r = h.data;
-        const el = document.createElement("div");
-        el.className = "hist-row";
-        el.innerHTML = `
-          <div class="hist-row-main">
-            ${esc(r.domain) || "(no domain)"}
-            ${r.state ? ` · <span class="state-badge ${STATE_CLASS[r.state]||''}">${esc(r.state)}</span>` : ""}
-          </div>
-          <div class="hist-row-sub">
-            ${r.agentLine ? `Agent: ${esc(r.agentLine)}` : ""}
-            ${r.vloggerTg ? ` · Vlogger: ${esc(r.vloggerTg)}` : ""}
-            ${r.contract ? ` · Contract: ${esc(r.contract)}` : ""}
-            ${r.myTg ? `<br>My TG: ${esc(r.myTg)}` : ""}
-          </div>
-          <div class="hist-row-meta">${svgIcon("clock", 11)} ${relativeTime(h.ts)}</div>
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(r.agentLine) || "—"}</td>
+          <td>${esc(r.taskPosted) || "—"}</td>
+          <td>${esc(r.releaseTime) || "—"}</td>
+          <td>${esc(r.updateTime) || "—"}</td>
+          <td>${esc(r.contract) || "—"}</td>
+          <td>${esc(r.first) || "—"}</td>
+          <td>${esc(r.second) || "—"}</td>
+          <td>${esc(r.third) || "—"}</td>
+          <td>${esc(r.vloggerTg) || "—"}</td>
+          <td>${r.domain ? `<a href="${esc(r.domain)}" target="_blank" rel="noopener" class="hist-link">${esc(r.domain)}</a>` : "—"}</td>
+          <td>${r.state ? `<span class="state-badge ${STATE_CLASS[r.state]||''}">${esc(r.state)}</span>` : "—"}</td>
+          <td>${esc(r.myTg) || "—"}</td>
+          <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
-        sec.appendChild(el);
+        tbody.appendChild(tr);
       });
-      body.appendChild(sec);
+      body.appendChild(section);
     }
 
     if (!body.children.length) {
@@ -450,7 +518,6 @@
                 contracts: Array.isArray(parsed.contracts) ? parsed.contracts : []
               };
               loaded = true;
-              console.info("Migrated data from", key);
               save();
               break;
             }
@@ -504,10 +571,11 @@
         else live = data.contracts.find(r => r._id === h.rowId);
         if (live) h.data = stripId(live);
       });
-
-      saveHistory();
     }
     if (!Array.isArray(history)) history = [];
+
+    const removed = cleanupHistory();
+    if (removed > 0) console.info(`Cleaned ${removed} empty history entries`);
   }
 
   function save() {
@@ -1167,7 +1235,9 @@
           data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
           if (Array.isArray(imported._history)) history = imported._history.filter(h => h && h.entity && h.data);
           if (imported._prefs) prefs = Object.assign(prefs, imported._prefs);
-          save(); savePrefs(); saveHistory();
+          save(); savePrefs();
+          cleanupHistory();
+          saveHistory();
           if (activeTab === "influencers") renderInfluencers();
           else if (activeTab === "contracts") renderContracts();
           else { histView = "days"; renderHistory(); }
