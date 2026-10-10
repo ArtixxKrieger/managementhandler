@@ -1,9 +1,6 @@
 /* =========================================================
-   Influencer & Contract Manager v5.1
-   - History = day cards → drill into day
-   - Delete whole day from history
-   - Only "add" events logged; edits update in-place
-   - 20,000 entry cap (~16 months)
+   Influencer & Contract Manager v5.2
+   Fix: History snapshot now uses stable row IDs
    ========================================================= */
 (function () {
   "use strict";
@@ -45,6 +42,12 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
+  /* ---------- ID GENERATOR ---------- */
+  function uid() {
+    return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  /* ---------- HELPERS ---------- */
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -83,49 +86,56 @@
   }
 
   /* ---------- HISTORY ---------- */
-  function logHistory(entity, rowSnapshot) {
+  // Each history entry: { id, ts, dateKey, entity, rowId, data }
+  // - rowId: stable ID that matches the live row's _id
+  // - data: full snapshot of that row (updated in place on edits)
+  function logHistory(entity, row) {
     const ts = Date.now();
     history.unshift({
       id: ts + Math.random(),
       ts,
       dateKey: dayKey(ts),
       entity,
-      data: { ...rowSnapshot }
+      rowId: row._id || uid(),
+      data: stripId(row)
     });
     if (history.length > HISTORY_LIMIT) history.length = HISTORY_LIMIT;
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
+    saveHistory();
     renderHistoryBadge();
     if (activeTab === "history" && histView === "days") renderHistory();
   }
 
-  function updateHistorySnapshot(entity, rowIndex, newSnapshot) {
-    const row = newSnapshot;
+  function updateHistorySnapshot(entity, row) {
+    if (!row || !row._id) return;
     for (let i = 0; i < history.length; i++) {
       const h = history[i];
-      if (h.entity !== entity) continue;
-      if (entity === "influencer") {
-        if (h.data.tg === row.tg && h.data.fbName === row.fbName) {
-          h.data = { ...row };
-          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
-          return;
-        }
-      } else {
-        if (h.data.agentLine === row.agentLine && h.data.domain === row.domain) {
-          h.data = { ...row };
-          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
-          return;
-        }
+      if (h.entity === entity && h.rowId === row._id) {
+        h.data = stripId(row);
+        saveHistory();
+        return;
       }
     }
+    // Fallback: if no match found but the row was just created,
+    // add a fresh entry so nothing is lost
+    logHistory(entity, row);
+  }
+
+  function stripId(row) {
+    const copy = { ...row };
+    delete copy._id;
+    return copy;
+  }
+
+  function saveHistory() {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
   }
 
   function deleteDay(dateKey) {
-    const before = history.length;
     const toRemove = history.filter(h => h.dateKey === dateKey).length;
     if (!toRemove) return;
     if (!confirm(`Delete ${displayDay(dateKey)} from history?\n\n${toRemove} entr${toRemove===1?"y":"ies"} will be removed.\nYour live influencers and contracts lists are NOT affected.`)) return;
     history = history.filter(h => h.dateKey !== dateKey);
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
+    saveHistory();
     if (histSelectedDay === dateKey) {
       histSelectedDay = null;
       histView = "days";
@@ -309,7 +319,7 @@
           <div class="hist-row-sub">
             ${r.fbName ? esc(r.fbName) : ""}
             ${r.fbLink ? ` · ${esc(r.fbLink)}` : ""}
-            ${r.notes ? `<br>📝 ${esc(r.notes)}` : ""}
+            ${r.notes ? `<br>${esc(r.notes)}` : ""}
           </div>
           <div class="hist-row-meta">${svgIcon("clock", 11)} ${relativeTime(h.ts)}</div>
         `;
@@ -460,12 +470,38 @@
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
+    // Ensure every row has a stable _id (migrate older rows)
+    data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
+    data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
+
+    // History — migrate old entries (no rowId → try to match by content)
     try {
       const rawH = localStorage.getItem(HISTORY_KEY);
       if (rawH) {
         const parsed = JSON.parse(rawH);
         if (Array.isArray(parsed)) {
-          history = parsed.filter(h => h && h.entity && h.data);
+          history = parsed.filter(h => h && h.entity && h.data).map(h => {
+            if (!h.rowId) {
+              // Try to link to a live row
+              let match = null;
+              if (h.entity === "influencer") {
+                match = data.influencers.find(r =>
+                  (r.tg && r.tg === h.data.tg) ||
+                  (r.fbName && r.fbName === h.data.fbName)
+                );
+              } else {
+                match = data.contracts.find(r =>
+                  (r.agentLine && r.agentLine === h.data.agentLine) ||
+                  (r.domain && r.domain === h.data.domain)
+                );
+              }
+              if (match) {
+                h.rowId = match._id;
+                h.data = stripId(match);
+              }
+            }
+            return h;
+          });
         }
       }
     } catch(e){}
@@ -564,12 +600,14 @@
 
   /* ============ INFLUENCERS ============ */
   function addInfluencer() {
-    const row = { tg: "", fbName: "", fbLink: "", notes: "" };
+    const row = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
     data.influencers.push(row);
-    save(); renderInfluencers();
+    save();
+    renderInfluencers();
     logHistory("influencer", row);
     toast("Influencer added");
   }
+
   function delInfluencer(i) {
     const row = data.influencers[i];
     if (!row) return;
@@ -614,7 +652,7 @@
           if (data.influencers[i][k] !== newVal) {
             data.influencers[i][k] = newVal;
             save(); flashCell(td);
-            updateHistorySnapshot("influencer", i, data.influencers[i]);
+            updateHistorySnapshot("influencer", data.influencers[i]);
           }
           td.innerHTML = escAndHighlight(data.influencers[i][k], filter);
         });
@@ -672,6 +710,7 @@
   /* ============ CONTRACTS ============ */
   function addContract() {
     const row = {
+      _id: uid(),
       agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
       contract: "", first: "", second: "", third: "",
       vloggerTg: "", domain: "", state: "Pending",
@@ -720,7 +759,7 @@
           if (data.contracts[i][k] !== newVal) {
             data.contracts[i][k] = newVal;
             save(); flashCell(td);
-            updateHistorySnapshot("contract", i, data.contracts[i]);
+            updateHistorySnapshot("contract", data.contracts[i]);
           }
           td.innerHTML = escAndHighlight(data.contracts[i][k], filter);
         });
@@ -741,7 +780,7 @@
         data.contracts[i].state = sel.value;
         sel.className = "state-select " + (STATE_CLASS[sel.value] || "");
         save();
-        updateHistorySnapshot("contract", i, data.contracts[i]);
+        updateHistorySnapshot("contract", data.contracts[i]);
       });
       stateTd.appendChild(sel); tr.appendChild(stateTd);
 
@@ -754,7 +793,7 @@
           data.contracts[i].myTg = newVal;
           if (newVal) { prefs.lastMyTg = newVal; savePrefs(); }
           save(); flashCell(myTgTd);
-          updateHistorySnapshot("contract", i, data.contracts[i]);
+          updateHistorySnapshot("contract", data.contracts[i]);
         }
         myTgTd.innerHTML = escAndHighlight(data.contracts[i].myTg, filter);
       });
@@ -894,7 +933,7 @@
     ], (v) => {
       Object.assign(data.influencers[i], v);
       save(); renderInfluencers();
-      updateHistorySnapshot("influencer", i, data.influencers[i]);
+      updateHistorySnapshot("influencer", data.influencers[i]);
     });
   }
   function openContractModal(i) {
@@ -917,7 +956,7 @@
       Object.assign(data.contracts[i], v);
       if (v.myTg) { prefs.lastMyTg = v.myTg; savePrefs(); }
       save(); renderContracts();
-      updateHistorySnapshot("contract", i, data.contracts[i]);
+      updateHistorySnapshot("contract", data.contracts[i]);
     });
   }
 
@@ -987,9 +1026,9 @@
         "notes": "notes", "note": "notes"
       };
       bodyRows.forEach(r => {
-        const obj = { tg: "", fbName: "", fbLink: "", notes: "" };
+        const obj = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
         headers.forEach((h, idx) => { const key = map[h]; if (key) obj[key] = (r[idx] || "").trim(); });
-        if (Object.values(obj).some(v => v)) {
+        if (Object.values(obj).some(v => v && v !== obj._id)) {
           data.influencers.push(obj);
           logHistory("influencer", obj);
           imported++;
@@ -1012,6 +1051,7 @@
       };
       bodyRows.forEach(r => {
         const obj = {
+          _id: uid(),
           agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
           contract: "", first: "", second: "", third: "",
           vloggerTg: "", domain: "", state: "Pending", myTg: ""
@@ -1026,7 +1066,7 @@
             } else obj[key] = val;
           }
         });
-        if (Object.values(obj).some(v => v && v !== "Pending")) {
+        if (Object.values(obj).some(v => v && v !== "Pending" && v !== obj._id)) {
           data.contracts.push(obj);
           logHistory("contract", obj);
           imported++;
@@ -1117,10 +1157,12 @@
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
         if (confirm("Replace ALL current data with this backup?")) {
           data = { influencers: imported.influencers, contracts: imported.contracts };
+          // Ensure IDs
+          data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
+          data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
           if (Array.isArray(imported._history)) history = imported._history.filter(h => h && h.entity && h.data);
           if (imported._prefs) prefs = Object.assign(prefs, imported._prefs);
-          save(); savePrefs();
-          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
+          save(); savePrefs(); saveHistory();
           if (activeTab === "influencers") renderInfluencers();
           else if (activeTab === "contracts") renderContracts();
           else { histView = "days"; renderHistory(); }
@@ -1171,7 +1213,7 @@
       if (!history.length) { toast("History already empty"); return; }
       if (confirm("Clear ALL history? This cannot be undone.")) {
         history = [];
-        try { localStorage.setItem(HISTORY_KEY, "[]"); } catch(e){}
+        saveHistory();
         renderHistory(); renderHistoryBadge();
         toast("History cleared");
       }
