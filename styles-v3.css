@@ -435,6 +435,8 @@ tbody tr:hover .del-btn { opacity: 1; }
   opacity: 1;
   outline: 2px solid var(--primary);
 }
+.day-card .del-btn { opacity: 0.6; }
+.day-card:hover .del-btn { opacity: 1; }
 
 /* ============================================================
    EMPTY STATE
@@ -631,6 +633,12 @@ tbody tr:hover .del-btn { opacity: 1; }
 [data-theme="dark"] .day-card-chip.chip-con { color: #4ade80; }
 .day-card-chip svg { width: 11px; height: 11px; }
 
+.day-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
 .day-card-arrow {
   color: var(--text-faint);
   flex-shrink: 0;
