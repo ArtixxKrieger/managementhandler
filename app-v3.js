@@ -1,8 +1,8 @@
 /* =========================================================
-   Influencer & Contract Manager v4.1
-   - Auto-migration from old keys
-   - Multi-key save (v5 + v6 + backup)
-   - Backup reminder
+   Influencer & Contract Manager v5
+   - History = day cards → drill into day → see data added that day
+   - Only "add" events are logged (edits update in-place, deletes keep snapshot)
+   - 20,000 entry cap (~16 months at your volume)
    ========================================================= */
 (function () {
   "use strict";
@@ -14,7 +14,7 @@
   const PREFS_KEY = "inf_contract_prefs";
   const HISTORY_KEY = "inf_contract_history";
   const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
-  const HISTORY_LIMIT = 500;
+  const HISTORY_LIMIT = 20000;   // ~16 months at 40 entries/day
 
   const STATES = ["Pending", "Done", "Account banned", "In progress"];
   const STATE_CLASS = {
@@ -25,13 +25,19 @@
   };
 
   let data = { influencers: [], contracts: [] };
-  let history = [];
+  let history = [];   // array of { id, ts, dateKey, entity, data: {...} }
   let prefs = { lastMyTg: "" };
   let editing = null;
   let lastDeleted = null;
   let lastSavedAt = null;
   let activeTab = "influencers";
   let csvImportTarget = null;
+
+  // History view state
+  let histView = "days";        // "days" | "detail"
+  let histSelectedDay = null;   // "YYYY-MM-DD"
+  let histDetailFilter = "all"; // "all" | "influencers" | "contracts"
+  let histDaysShown = 30;
 
   const infSort = { key: null, dir: 1 };
   const conSort = { key: null, dir: 1 };
@@ -42,10 +48,8 @@
 
   function esc(s) {
     return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function escAndHighlight(s, filter) {
     const safe = esc(s);
@@ -56,11 +60,20 @@
   function svgIcon(name, size = 16) {
     return `<svg class="icon-svg" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
   }
+
+  function pad(n) { return String(n).padStart(2, "0"); }
   function todaySlug() {
     const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${mm}-${dd}-${d.getFullYear()}`;
+    return `${pad(d.getMonth()+1)}-${pad(d.getDate())}-${d.getFullYear()}`;
+  }
+  function dayKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function displayDay(dateKey) {
+    // "2026-10-10" → "10-10-2026"
+    const [y, m, d] = dateKey.split("-");
+    return `${m}-${d}-${y}`;
   }
   function relativeTime(ts) {
     const diff = Math.floor((Date.now() - ts) / 1000);
@@ -71,57 +84,268 @@
     return new Date(ts).toLocaleDateString();
   }
 
-  /* ---------- HISTORY LOG ---------- */
-  function logHistory(type, title, details) {
-    history.unshift({ id: Date.now() + Math.random(), ts: Date.now(), type, title, details: details || "" });
+  /* ---------- HISTORY (new schema) ---------- */
+  function logHistory(entity, rowSnapshot) {
+    // entity: "influencer" | "contract"
+    const ts = Date.now();
+    history.unshift({
+      id: ts + Math.random(),
+      ts,
+      dateKey: dayKey(ts),
+      entity,
+      data: { ...rowSnapshot }
+    });
     if (history.length > HISTORY_LIMIT) history.length = HISTORY_LIMIT;
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
     renderHistoryBadge();
-    if (activeTab === "history") renderHistory();
+    if (activeTab === "history" && histView === "days") renderHistory();
   }
+
+  function updateHistorySnapshot(entity, rowIndex, newSnapshot) {
+    // Called after edit: finds most recent history entry for this row and updates it
+    // (so history reflects current data, not stale)
+    // Matching heuristic: same entity + matching (tg OR fbName) for influencers,
+    // (agentLine + domain) for contracts.
+    const row = newSnapshot;
+    for (let i = 0; i < history.length; i++) {
+      const h = history[i];
+      if (h.entity !== entity) continue;
+      if (entity === "influencer") {
+        if (h.data.tg === row.tg && h.data.fbName === row.fbName) {
+          h.data = { ...row };
+          save();
+          return;
+        }
+      } else {
+        if (h.data.agentLine === row.agentLine && h.data.domain === row.domain) {
+          h.data = { ...row };
+          save();
+          return;
+        }
+      }
+    }
+  }
+
   function renderHistoryBadge() {
     const el = $("#histBadge");
     if (el) el.textContent = history.length;
   }
-  function renderHistory() {
-    const list = $("#histList");
-    if (!list) return;
-    const filter = ($("#histSearch")?.value || "").toLowerCase();
-    const typeFilter = $("#histTypeFilter")?.value || "";
-    list.innerHTML = "";
-    const items = history.filter(h => {
-      if (typeFilter && h.type !== typeFilter) return false;
-      if (filter) {
-        const hay = (h.title + " " + h.details).toLowerCase();
-        if (!hay.includes(filter)) return false;
-      }
-      return true;
+
+  function getDaysMap() {
+    // Returns Map<dateKey, { influencers: [], contracts: [] }>
+    const map = new Map();
+    history.forEach(h => {
+      if (!map.has(h.dateKey)) map.set(h.dateKey, { influencers: [], contracts: [] });
+      const bucket = map.get(h.dateKey);
+      if (h.entity === "influencer") bucket.influencers.push(h);
+      else bucket.contracts.push(h);
     });
-    if (!items.length) {
-      list.innerHTML = `
-        <div class="hist-empty">
-          ${svgIcon("clock", 48)}
-          <h3>No activity yet</h3>
-          <p>Your actions will show up here.</p>
-        </div>`;
+    return map;
+  }
+
+  function renderHistory() {
+    const daysContainer = $("#histDays");
+    const detailView = $("#histDetailView");
+    const daysView = $("#histDaysView");
+    if (!daysContainer) return;
+
+    if (histView === "detail") {
+      daysView.hidden = true;
+      detailView.hidden = false;
+      renderHistoryDetail();
       return;
     }
-    const iconName = { add: "plus", edit: "edit", delete: "trash", import: "upload", restore: "undo" };
-    items.forEach(h => {
-      const el = document.createElement("div");
-      el.className = "hist-item";
-      el.innerHTML = `
-        <div class="hist-icon type-${h.type}">${svgIcon(iconName[h.type] || "check", 16)}</div>
-        <div class="hist-body">
-          <div class="hist-title">${esc(h.title)}</div>
-          ${h.details ? `<div class="hist-details">${esc(h.details)}</div>` : ""}
-          <div class="hist-time">
-            ${svgIcon("clock", 12)}
-            <span title="${new Date(h.ts).toLocaleString()}">${relativeTime(h.ts)}</span>
-          </div>
+
+    // Days view
+    daysView.hidden = false;
+    detailView.hidden = true;
+
+    const searchFilter = ($("#histSearch")?.value || "").toLowerCase();
+    const monthFilter = $("#histMonthFilter")?.value || "";
+
+    const daysMap = getDaysMap();
+    let dayKeys = Array.from(daysMap.keys()).sort((a, b) => b.localeCompare(a)); // newest first
+
+    // Month filter (value format: "YYYY-MM")
+    if (monthFilter) {
+      dayKeys = dayKeys.filter(k => k.startsWith(monthFilter));
+    }
+
+    // Search filter
+    if (searchFilter) {
+      dayKeys = dayKeys.filter(k => {
+        const bucket = daysMap.get(k);
+        const all = [...bucket.influencers, ...bucket.contracts];
+        return all.some(h => {
+          const d = h.data;
+          const hay = h.entity === "influencer"
+            ? [d.tg, d.fbName, d.fbLink, d.notes].join(" ").toLowerCase()
+            : [d.agentLine, d.domain, d.vloggerTg, d.myTg, d.contract, d.state].join(" ").toLowerCase();
+          return hay.includes(searchFilter);
+        });
+      });
+    }
+
+    // Populate month dropdown
+    populateMonthFilter(Array.from(getDaysMap().keys()));
+
+    // Paginate
+    const shown = dayKeys.slice(0, histDaysShown);
+    const hasMore = dayKeys.length > shown.length;
+
+    daysContainer.innerHTML = "";
+
+    if (!shown.length) {
+      daysContainer.innerHTML = `
+        <div class="hist-empty">
+          ${svgIcon("clock", 48)}
+          <h3>${searchFilter || monthFilter ? "No matches" : "No history yet"}</h3>
+          <p>${searchFilter || monthFilter ? "Try a different search or month." : "Added influencers and contracts will appear here by day."}</p>
         </div>`;
-      list.appendChild(el);
+      $("#histLoadMore").hidden = true;
+      return;
+    }
+
+    shown.forEach(key => {
+      const bucket = daysMap.get(key);
+      const infCount = bucket.influencers.length;
+      const conCount = bucket.contracts.length;
+      const card = document.createElement("div");
+      card.className = "day-card";
+      card.innerHTML = `
+        <div class="day-card-icon">${svgIcon("calendar", 22)}</div>
+        <div class="day-card-body">
+          <div class="day-card-date">${displayDay(key)}</div>
+          <div class="day-card-sub">
+            ${infCount ? `<span class="day-card-chip chip-inf">${svgIcon("users", 11)} ${infCount} influencer${infCount===1?"":"s"}</span>` : ""}
+            ${conCount ? `<span class="day-card-chip chip-con">${svgIcon("file", 11)} ${conCount} contract${conCount===1?"":"s"}</span>` : ""}
+          </div>
+        </div>
+        <div class="day-card-arrow">${svgIcon("chevron-right", 18)}</div>
+      `;
+      card.addEventListener("click", () => openDayDetail(key));
+      daysContainer.appendChild(card);
     });
+
+    $("#histLoadMore").hidden = !hasMore;
+  }
+
+  function populateMonthFilter(allKeys) {
+    const sel = $("#histMonthFilter");
+    if (!sel) return;
+    const months = new Set();
+    allKeys.forEach(k => months.add(k.slice(0, 7))); // YYYY-MM
+    const sorted = Array.from(months).sort((a, b) => b.localeCompare(a));
+    const current = sel.value;
+    sel.innerHTML = `<option value="">All months</option>` +
+      sorted.map(m => {
+        const [y, mm] = m.split("-");
+        return `<option value="${m}">${mm}-${y}</option>`;
+      }).join("");
+    sel.value = current || "";
+  }
+
+  function openDayDetail(key) {
+    histSelectedDay = key;
+    histDetailFilter = "all";
+    histView = "detail";
+    // Reset tab UI
+    $$(".hist-tab").forEach(t => t.classList.toggle("active", t.dataset.histTab === "all"));
+    renderHistory();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function closeDayDetail() {
+    histView = "days";
+    histSelectedDay = null;
+    renderHistory();
+  }
+
+  function setHistDetailFilter(f) {
+    histDetailFilter = f;
+    $$(".hist-tab").forEach(t => t.classList.toggle("active", t.dataset.histTab === f));
+    renderHistoryDetail();
+  }
+
+  function renderHistoryDetail() {
+    const title = $("#histDetailTitle");
+    const body = $("#histDetailBody");
+    if (!title || !body) return;
+
+    const daysMap = getDaysMap();
+    const bucket = daysMap.get(histSelectedDay);
+    title.textContent = displayDay(histSelectedDay);
+
+    if (!bucket) {
+      body.innerHTML = `<div class="hist-empty"><h3>No data</h3></div>`;
+      return;
+    }
+
+    body.innerHTML = "";
+
+    const showInf = histDetailFilter === "all" || histDetailFilter === "influencers";
+    const showCon = histDetailFilter === "all" || histDetailFilter === "contracts";
+
+    if (showInf && bucket.influencers.length) {
+      const sec = document.createElement("div");
+      sec.className = "hist-section";
+      sec.innerHTML = `
+        <div class="hist-section-head">${svgIcon("users", 14)} Influencers · ${bucket.influencers.length}</div>
+      `;
+      bucket.influencers.forEach(h => {
+        const r = h.data;
+        const el = document.createElement("div");
+        el.className = "hist-row";
+        el.innerHTML = `
+          <div class="hist-row-main">${esc(r.tg) || "(no username)"}</div>
+          <div class="hist-row-sub">
+            ${r.fbName ? esc(r.fbName) : ""}
+            ${r.fbLink ? ` · ${esc(r.fbLink)}` : ""}
+            ${r.notes ? `<br>📝 ${esc(r.notes)}` : ""}
+          </div>
+          <div class="hist-row-meta">${svgIcon("clock", 11)} ${relativeTime(h.ts)}</div>
+        `;
+        sec.appendChild(el);
+      });
+      body.appendChild(sec);
+    }
+
+    if (showCon && bucket.contracts.length) {
+      const sec = document.createElement("div");
+      sec.className = "hist-section";
+      sec.innerHTML = `
+        <div class="hist-section-head">${svgIcon("file", 14)} Contracts · ${bucket.contracts.length}</div>
+      `;
+      bucket.contracts.forEach(h => {
+        const r = h.data;
+        const el = document.createElement("div");
+        el.className = "hist-row";
+        el.innerHTML = `
+          <div class="hist-row-main">
+            ${esc(r.domain) || "(no domain)"}
+            ${r.state ? ` · <span class="state-badge ${STATE_CLASS[r.state]||''}">${esc(r.state)}</span>` : ""}
+          </div>
+          <div class="hist-row-sub">
+            ${r.agentLine ? `Agent: ${esc(r.agentLine)}` : ""}
+            ${r.vloggerTg ? ` · Vlogger: ${esc(r.vloggerTg)}` : ""}
+            ${r.contract ? ` · Contract: ${esc(r.contract)}` : ""}
+            ${r.myTg ? `<br>My TG: ${esc(r.myTg)}` : ""}
+          </div>
+          <div class="hist-row-meta">${svgIcon("clock", 11)} ${relativeTime(h.ts)}</div>
+        `;
+        sec.appendChild(el);
+      });
+      body.appendChild(sec);
+    }
+
+    if (!body.children.length) {
+      body.innerHTML = `
+        <div class="hist-empty">
+          ${svgIcon("clock", 48)}
+          <h3>Nothing to show</h3>
+          <p>No ${histDetailFilter === "all" ? "data" : histDetailFilter} on this day.</p>
+        </div>`;
+    }
   }
 
   /* ---------- TOAST ---------- */
@@ -182,9 +406,7 @@
       });
     }
   }
-  function applyTheme(t) {
-    document.documentElement.setAttribute("data-theme", t);
-  }
+  function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); }
 
   /* ---------- PREFS ---------- */
   function loadPrefs() {
@@ -200,20 +422,15 @@
   /* ---------- LOAD WITH MIGRATION ---------- */
   function load() {
     let loaded = false;
-
-    // 1. Try current key
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && (Array.isArray(parsed.influencers) || Array.isArray(parsed.contracts))) {
-          data = parsed;
-          loaded = true;
+          data = parsed; loaded = true;
         }
       }
     } catch(e){}
-
-    // 2. If nothing, try legacy keys
     if (!loaded) {
       for (const key of LEGACY_KEYS) {
         try {
@@ -227,7 +444,6 @@
               };
               loaded = true;
               console.info("Migrated data from", key);
-              // Save immediately under the new key so it sticks
               save();
               break;
             }
@@ -235,29 +451,29 @@
         } catch(e){}
       }
     }
-
-    // 3. Final fallback
     if (!data || typeof data !== "object") data = { influencers: [], contracts: [] };
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
-    // History
+    // History — migrate old shape (title/details) to new shape (entity/data) gracefully
     try {
       const rawH = localStorage.getItem(HISTORY_KEY);
-      if (rawH) history = JSON.parse(rawH);
+      if (rawH) {
+        const parsed = JSON.parse(rawH);
+        if (Array.isArray(parsed)) {
+          history = parsed.filter(h => h && h.entity && h.data);
+        }
+      }
     } catch(e){}
     if (!Array.isArray(history)) history = [];
   }
 
-  /* ---------- SAVE (multi-key) ---------- */
+  /* ---------- SAVE ---------- */
   function save() {
     const payload = JSON.stringify(data);
     try {
-      // Primary
       localStorage.setItem(STORAGE_KEY, payload);
-      // Mirror to legacy v5 so nothing breaks on rollback
       localStorage.setItem("inf_contract_manager_v5", payload);
-      // Backup snapshot (kept small by overwriting)
       localStorage.setItem(MIRROR_KEY, payload);
       lastSavedAt = Date.now();
       updateLastSaved();
@@ -267,7 +483,6 @@
     }
     renderCounts();
   }
-
   function renderCounts() {
     const a = $("#infBadge"); const b = $("#conBadge");
     if (a) a.textContent = data.influencers.length;
@@ -291,7 +506,11 @@
         updateStatus(label);
         if (next === "influencers") renderInfluencers();
         else if (next === "contracts") renderContracts();
-        else renderHistory();
+        else {
+          histView = "days";
+          histSelectedDay = null;
+          renderHistory();
+        }
       });
     });
   }
@@ -344,18 +563,19 @@
 
   /* ============ INFLUENCERS ============ */
   function addInfluencer() {
-    data.influencers.push({ tg: "", fbName: "", fbLink: "", notes: "" });
+    const row = { tg: "", fbName: "", fbLink: "", notes: "" };
+    data.influencers.push(row);
     save(); renderInfluencers();
-    logHistory("add", "Added influencer", "");
+    logHistory("influencer", row);
     toast("Influencer added");
   }
+
   function delInfluencer(i) {
     const row = data.influencers[i];
     if (!row) return;
     lastDeleted = { type: "influencer", row: { ...row }, index: i };
     data.influencers.splice(i, 1);
     save(); renderInfluencers();
-    logHistory("delete", "Deleted influencer", row.tg || row.fbName || "(blank)");
     toast("Influencer deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
   function undoDelete() {
@@ -363,10 +583,10 @@
     const { type, row, index } = lastDeleted;
     if (type === "influencer") { data.influencers.splice(index, 0, row); save(); renderInfluencers(); }
     else { data.contracts.splice(index, 0, row); save(); renderContracts(); }
-    logHistory("restore", "Undid delete", row.tg || row.agentLine || "");
     lastDeleted = null;
     toast("Restored");
   }
+
   function renderInfluencers() {
     const filter = ($("#infSearch")?.value || "").toLowerCase();
     const tbody = $("#infTable tbody");
@@ -392,10 +612,9 @@
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           if (data.influencers[i][k] !== newVal) {
-            const oldVal = data.influencers[i][k] || "";
             data.influencers[i][k] = newVal;
             save(); flashCell(td);
-            logHistory("edit", `Edited influencer (${k})`, `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
+            updateHistorySnapshot("influencer", i, data.influencers[i]);
           }
           td.innerHTML = escAndHighlight(data.influencers[i][k], filter);
         });
@@ -452,26 +671,27 @@
 
   /* ============ CONTRACTS ============ */
   function addContract() {
-    const newRow = {
+    const row = {
       agentLine: "", taskPosted: "", releaseTime: "", updateTime: "",
       contract: "", first: "", second: "", third: "",
       vloggerTg: "", domain: "", state: "Pending",
       myTg: prefs.lastMyTg || ""
     };
-    data.contracts.push(newRow);
+    data.contracts.push(row);
     save(); renderContracts();
-    logHistory("add", "Added contract", newRow.myTg ? `My TG: ${newRow.myTg}` : "");
+    logHistory("contract", row);
     toast("Contract added");
   }
+
   function delContract(i) {
     const row = data.contracts[i];
     if (!row) return;
     lastDeleted = { type: "contract", row: { ...row }, index: i };
     data.contracts.splice(i, 1);
     save(); renderContracts();
-    logHistory("delete", "Deleted contract", row.agentLine || row.domain || "(blank)");
     toast("Contract deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
+
   function renderContracts() {
     const filter = ($("#conSearch")?.value || "").toLowerCase();
     const tbody = $("#conTable tbody");
@@ -499,10 +719,9 @@
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           if (data.contracts[i][k] !== newVal) {
-            const oldVal = data.contracts[i][k] || "";
             data.contracts[i][k] = newVal;
             save(); flashCell(td);
-            logHistory("edit", `Edited contract (${k})`, `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
+            updateHistorySnapshot("contract", i, data.contracts[i]);
           }
           td.innerHTML = escAndHighlight(data.contracts[i][k], filter);
         });
@@ -520,11 +739,10 @@
         sel.appendChild(opt);
       });
       sel.addEventListener("change", () => {
-        const oldState = data.contracts[i].state;
         data.contracts[i].state = sel.value;
         sel.className = "state-select " + (STATE_CLASS[sel.value] || "");
         save();
-        logHistory("edit", "Changed contract state", `${oldState} → ${sel.value}`);
+        updateHistorySnapshot("contract", i, data.contracts[i]);
       });
       stateTd.appendChild(sel); tr.appendChild(stateTd);
 
@@ -534,11 +752,10 @@
       myTgTd.addEventListener("blur", () => {
         const newVal = myTgTd.innerText.trim();
         if (data.contracts[i].myTg !== newVal) {
-          const oldVal = data.contracts[i].myTg || "";
           data.contracts[i].myTg = newVal;
           if (newVal) { prefs.lastMyTg = newVal; savePrefs(); }
           save(); flashCell(myTgTd);
-          logHistory("edit", "Edited My TG", `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
+          updateHistorySnapshot("contract", i, data.contracts[i]);
         }
         myTgTd.innerHTML = escAndHighlight(data.contracts[i].myTg, filter);
       });
@@ -679,7 +896,7 @@
     ], (v) => {
       Object.assign(data.influencers[i], v);
       save(); renderInfluencers();
-      logHistory("edit", "Edited influencer (modal)", row.tg || "(blank)");
+      updateHistorySnapshot("influencer", i, data.influencers[i]);
     });
   }
   function openContractModal(i) {
@@ -702,7 +919,7 @@
       Object.assign(data.contracts[i], v);
       if (v.myTg) { prefs.lastMyTg = v.myTg; savePrefs(); }
       save(); renderContracts();
-      logHistory("edit", "Edited contract (modal)", row.agentLine || "(blank)");
+      updateHistorySnapshot("contract", i, data.contracts[i]);
     });
   }
 
@@ -713,10 +930,8 @@
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (inQuotes) {
-        if (c === '"') {
-          if (text[i+1] === '"') { field += '"'; i++; }
-          else inQuotes = false;
-        } else field += c;
+        if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQuotes = false; }
+        else field += c;
       } else {
         if (c === '"') inQuotes = true;
         else if (c === ",") { cur.push(field); field = ""; }
@@ -776,7 +991,11 @@
       bodyRows.forEach(r => {
         const obj = { tg: "", fbName: "", fbLink: "", notes: "" };
         headers.forEach((h, idx) => { const key = map[h]; if (key) obj[key] = (r[idx] || "").trim(); });
-        if (Object.values(obj).some(v => v)) { data.influencers.push(obj); imported++; }
+        if (Object.values(obj).some(v => v)) {
+          data.influencers.push(obj);
+          logHistory("influencer", obj);
+          imported++;
+        }
       });
     } else {
       const map = {
@@ -809,12 +1028,15 @@
             } else obj[key] = val;
           }
         });
-        if (Object.values(obj).some(v => v && v !== "Pending")) { data.contracts.push(obj); imported++; }
+        if (Object.values(obj).some(v => v && v !== "Pending")) {
+          data.contracts.push(obj);
+          logHistory("contract", obj);
+          imported++;
+        }
       });
     }
     save();
     if (csvImportTarget === "influencers") renderInfluencers(); else renderContracts();
-    logHistory("import", `Imported ${imported} ${csvImportTarget} from CSV`, "");
     toast(`Imported ${imported} row${imported===1?"":"s"}`);
     closeCsvModal();
   }
@@ -853,11 +1075,19 @@
   /* ============ HISTORY CSV ============ */
   function exportHistoryCsv() {
     if (!history.length) { toast("No history to export", { icon: "trash" }); return; }
-    const header = "Timestamp,Type,Title,Details";
+    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Notes,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
     const lines = history.map(h => {
-      const t = new Date(h.ts).toLocaleString();
+      const d = new Date(h.ts);
+      const date = `${pad(d.getMonth()+1)}-${pad(d.getDate())}-${d.getFullYear()}`;
+      const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
       const clean = (s) => `"${String(s||"").replace(/"/g, '""')}"`;
-      return [clean(t), clean(h.type), clean(h.title), clean(h.details)].join(",");
+      if (h.entity === "influencer") {
+        const r = h.data;
+        return [date, time, "influencer", clean(r.tg), clean(r.fbName), clean(r.fbLink), clean(r.notes), "", "", "", "", "", ""].join(",");
+      } else {
+        const r = h.data;
+        return [date, time, "contract", "", "", "", "", clean(r.agentLine), clean(r.domain), clean(r.vloggerTg), clean(r.contract), clean(r.state), clean(r.myTg)].join(",");
+      }
     });
     const csv = header + "\n" + lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -881,7 +1111,6 @@
     try { localStorage.setItem(BACKUP_TS_KEY, String(Date.now())); } catch(e){}
     toast("Backup exported");
   }
-
   function importJson(file) {
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -890,14 +1119,13 @@
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
         if (confirm("Replace ALL current data with this backup?")) {
           data = { influencers: imported.influencers, contracts: imported.contracts };
-          if (Array.isArray(imported._history)) history = imported._history;
+          if (Array.isArray(imported._history)) history = imported._history.filter(h => h && h.entity && h.data);
           if (imported._prefs) prefs = Object.assign(prefs, imported._prefs);
           save(); savePrefs();
           try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
           if (activeTab === "influencers") renderInfluencers();
           else if (activeTab === "contracts") renderContracts();
-          else renderHistory();
-          logHistory("restore", "Restored from backup", file.name);
+          else { histView = "days"; renderHistory(); }
           toast("Backup restored");
         }
       } catch (e) { toast("Invalid backup file", { icon: "trash" }); }
@@ -941,6 +1169,8 @@
     bind("csvModalCancel", closeCsvModal);
     bind("csvModalImport", doCsvImport);
     bind("exportHistCsv", exportHistoryCsv);
+    bind("histBackBtn", closeDayDetail);
+    bind("histLoadMoreBtn", () => { histDaysShown += 30; renderHistory(); });
     bind("clearHist", () => {
       if (!history.length) { toast("History already empty"); return; }
       if (confirm("Clear ALL history? This cannot be undone.")) {
@@ -950,6 +1180,17 @@
         toast("History cleared");
       }
     });
+
+    // History tab buttons
+    $$(".hist-tab").forEach(t => {
+      t.addEventListener("click", () => setHistDetailFilter(t.dataset.histTab));
+    });
+
+    // History filters
+    const histSearch = $("#histSearch");
+    if (histSearch) histSearch.addEventListener("input", () => { histDaysShown = 30; renderHistory(); });
+    const histMonthFilter = $("#histMonthFilter");
+    if (histMonthFilter) histMonthFilter.addEventListener("change", () => { histDaysShown = 30; renderHistory(); });
 
     const importInput = $("#importJson");
     if (importInput) importInput.addEventListener("change", (e) => {
@@ -972,7 +1213,6 @@
       }
       e.target.value = "";
     });
-
     const importConCsv = $("#importConCsv");
     if (importConCsv) importConCsv.addEventListener("change", (e) => {
       const file = e.target.files[0];
@@ -987,7 +1227,6 @@
       }
       e.target.value = "";
     });
-
     const csvText = $("#csvText");
     if (csvText) csvText.addEventListener("input", updateCsvPreview);
 
@@ -995,10 +1234,6 @@
     if (infSearch) infSearch.addEventListener("input", renderInfluencers);
     const conSearch = $("#conSearch");
     if (conSearch) conSearch.addEventListener("input", renderContracts);
-    const histSearch = $("#histSearch");
-    if (histSearch) histSearch.addEventListener("input", renderHistory);
-    const histTypeFilter = $("#histTypeFilter");
-    if (histTypeFilter) histTypeFilter.addEventListener("change", renderHistory);
 
     const modal = $("#modal");
     if (modal) modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
@@ -1009,6 +1244,7 @@
       if (e.key === "Escape") {
         if (modal && !modal.hidden) { closeModal(); return; }
         if (csvModal && !csvModal.hidden) { closeCsvModal(); return; }
+        if (activeTab === "history" && histView === "detail") { closeDayDetail(); return; }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
