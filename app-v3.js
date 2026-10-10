@@ -1,14 +1,19 @@
 /* =========================================================
-   Influencer & Contract Manager v4
-   Features: CSV import, sort, search highlight, My TG autofill, History log
+   Influencer & Contract Manager v4.1
+   - Auto-migration from old keys
+   - Multi-key save (v5 + v6 + backup)
+   - Backup reminder
    ========================================================= */
 (function () {
   "use strict";
 
   const STORAGE_KEY = "inf_contract_manager_v6";
+  const LEGACY_KEYS = ["inf_contract_manager_v5", "inf_contract_manager_v4", "inf_contract_manager_v3"];
+  const MIRROR_KEY = "inf_contract_manager_backup";
   const THEME_KEY = "inf_contract_theme";
   const PREFS_KEY = "inf_contract_prefs";
   const HISTORY_KEY = "inf_contract_history";
+  const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
   const HISTORY_LIMIT = 500;
 
   const STATES = ["Pending", "Done", "Account banned", "In progress"];
@@ -26,7 +31,7 @@
   let lastDeleted = null;
   let lastSavedAt = null;
   let activeTab = "influencers";
-  let csvImportTarget = null; // "influencers" | "contracts"
+  let csvImportTarget = null;
 
   const infSort = { key: null, dir: 1 };
   const conSort = { key: null, dir: 1 };
@@ -42,34 +47,21 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
-
   function escAndHighlight(s, filter) {
     const safe = esc(s);
     if (!filter) return safe;
     const re = new RegExp("(" + filter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
     return safe.replace(re, '<mark class="hl">$1</mark>');
   }
-
   function svgIcon(name, size = 16) {
     return `<svg class="icon-svg" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
   }
-
   function todaySlug() {
     const d = new Date();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     return `${mm}-${dd}-${d.getFullYear()}`;
   }
-
-  function nowStamp() {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${mm}-${dd}-${d.getFullYear()} ${hh}:${mi}`;
-  }
-
   function relativeTime(ts) {
     const diff = Math.floor((Date.now() - ts) / 1000);
     if (diff < 60) return `${diff}s ago`;
@@ -81,30 +73,21 @@
 
   /* ---------- HISTORY LOG ---------- */
   function logHistory(type, title, details) {
-    history.unshift({
-      id: Date.now() + Math.random(),
-      ts: Date.now(),
-      type,
-      title,
-      details: details || ""
-    });
+    history.unshift({ id: Date.now() + Math.random(), ts: Date.now(), type, title, details: details || "" });
     if (history.length > HISTORY_LIMIT) history.length = HISTORY_LIMIT;
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
     renderHistoryBadge();
     if (activeTab === "history") renderHistory();
   }
-
   function renderHistoryBadge() {
     const el = $("#histBadge");
     if (el) el.textContent = history.length;
   }
-
   function renderHistory() {
     const list = $("#histList");
     if (!list) return;
     const filter = ($("#histSearch")?.value || "").toLowerCase();
     const typeFilter = $("#histTypeFilter")?.value || "";
-
     list.innerHTML = "";
     const items = history.filter(h => {
       if (typeFilter && h.type !== typeFilter) return false;
@@ -114,7 +97,6 @@
       }
       return true;
     });
-
     if (!items.length) {
       list.innerHTML = `
         <div class="hist-empty">
@@ -124,12 +106,7 @@
         </div>`;
       return;
     }
-
-    const iconName = {
-      add: "plus", edit: "edit", delete: "trash",
-      import: "upload", restore: "undo"
-    };
-
+    const iconName = { add: "plus", edit: "edit", delete: "trash", import: "upload", restore: "undo" };
     items.forEach(h => {
       const el = document.createElement("div");
       el.className = "hist-item";
@@ -155,25 +132,19 @@
     const iconEl = el.querySelector(".toast-icon");
     const actionBtn = $("#toastAction");
     if (!el) return;
-
     msgEl.textContent = msg;
     if (iconEl) {
       iconEl.innerHTML = `<use href="#i-${opts.icon || "check"}"/>`;
       iconEl.style.color = opts.icon === "trash" ? "var(--danger)" : "var(--success)";
     }
-
     if (opts.actionLabel && typeof opts.onAction === "function") {
       actionBtn.hidden = false;
       actionBtn.querySelector("span").textContent = opts.actionLabel;
-      actionBtn.onclick = () => {
-        opts.onAction();
-        hideToast();
-      };
+      actionBtn.onclick = () => { opts.onAction(); hideToast(); };
     } else {
       actionBtn.hidden = true;
       actionBtn.onclick = null;
     }
-
     el.classList.add("show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(hideToast, opts.duration || 2600);
@@ -183,7 +154,7 @@
     if (el) el.classList.remove("show");
   }
 
-  /* ---------- STATUS BAR ---------- */
+  /* ---------- STATUS ---------- */
   function updateStatus(text) {
     const el = $("#statusText");
     if (el && text) el.textContent = text;
@@ -199,9 +170,7 @@
   /* ---------- THEME ---------- */
   function initTheme() {
     let saved = localStorage.getItem(THEME_KEY);
-    if (!saved) {
-      saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
+    if (!saved) saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     applyTheme(saved);
     const btn = $("#themeToggle");
     if (btn) {
@@ -228,30 +197,77 @@
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
   }
 
-  /* ---------- STORAGE ---------- */
+  /* ---------- LOAD WITH MIGRATION ---------- */
   function load() {
+    let loaded = false;
+
+    // 1. Try current key
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) data = JSON.parse(raw);
-    } catch (e) { console.warn("Load failed", e); }
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (Array.isArray(parsed.influencers) || Array.isArray(parsed.contracts))) {
+          data = parsed;
+          loaded = true;
+        }
+      }
+    } catch(e){}
+
+    // 2. If nothing, try legacy keys
+    if (!loaded) {
+      for (const key of LEGACY_KEYS) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && (Array.isArray(parsed.influencers) || Array.isArray(parsed.contracts))) {
+              data = {
+                influencers: Array.isArray(parsed.influencers) ? parsed.influencers : [],
+                contracts: Array.isArray(parsed.contracts) ? parsed.contracts : []
+              };
+              loaded = true;
+              console.info("Migrated data from", key);
+              // Save immediately under the new key so it sticks
+              save();
+              break;
+            }
+          }
+        } catch(e){}
+      }
+    }
+
+    // 3. Final fallback
     if (!data || typeof data !== "object") data = { influencers: [], contracts: [] };
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
+    // History
     try {
       const rawH = localStorage.getItem(HISTORY_KEY);
       if (rawH) history = JSON.parse(rawH);
     } catch(e){}
     if (!Array.isArray(history)) history = [];
   }
+
+  /* ---------- SAVE (multi-key) ---------- */
   function save() {
+    const payload = JSON.stringify(data);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      // Primary
+      localStorage.setItem(STORAGE_KEY, payload);
+      // Mirror to legacy v5 so nothing breaks on rollback
+      localStorage.setItem("inf_contract_manager_v5", payload);
+      // Backup snapshot (kept small by overwriting)
+      localStorage.setItem(MIRROR_KEY, payload);
       lastSavedAt = Date.now();
       updateLastSaved();
-    } catch (e) { console.warn("Save failed", e); }
+    } catch (e) {
+      console.warn("Save failed", e);
+      toast("Save failed — storage full?", { icon: "trash" });
+    }
     renderCounts();
   }
+
   function renderCounts() {
     const a = $("#infBadge"); const b = $("#conBadge");
     if (a) a.textContent = data.influencers.length;
@@ -280,7 +296,7 @@
     });
   }
 
-  /* ---------- SORT HELPERS ---------- */
+  /* ---------- SORT ---------- */
   function sortedData(arr, sortState) {
     if (!sortState.key) return arr;
     const { key, dir } = sortState;
@@ -294,9 +310,7 @@
       })
       .map(x => x.row);
   }
-
   function initSortHeaders() {
-    // Influencers
     $$("#infTable thead th[data-sort]").forEach(th => {
       th.addEventListener("click", () => {
         const k = th.dataset.sort;
@@ -306,7 +320,6 @@
         renderInfluencers();
       });
     });
-    // Contracts
     $$("#conTable thead th[data-sort]").forEach(th => {
       th.addEventListener("click", () => {
         const k = th.dataset.sort;
@@ -317,7 +330,6 @@
       });
     });
   }
-
   function updateSortIcons(tableSel, sortState) {
     $$(tableSel + " thead th[data-sort]").forEach(th => {
       th.classList.remove("sorted-asc", "sorted-desc");
@@ -333,40 +345,28 @@
   /* ============ INFLUENCERS ============ */
   function addInfluencer() {
     data.influencers.push({ tg: "", fbName: "", fbLink: "", notes: "" });
-    save();
-    renderInfluencers();
+    save(); renderInfluencers();
     logHistory("add", "Added influencer", "");
     toast("Influencer added");
   }
-
   function delInfluencer(i) {
     const row = data.influencers[i];
     if (!row) return;
     lastDeleted = { type: "influencer", row: { ...row }, index: i };
     data.influencers.splice(i, 1);
-    save();
-    renderInfluencers();
+    save(); renderInfluencers();
     logHistory("delete", "Deleted influencer", row.tg || row.fbName || "(blank)");
-    toast("Influencer deleted", {
-      icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete
-    });
+    toast("Influencer deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
-
   function undoDelete() {
     if (!lastDeleted) return;
     const { type, row, index } = lastDeleted;
-    if (type === "influencer") {
-      data.influencers.splice(index, 0, row);
-      save(); renderInfluencers();
-    } else {
-      data.contracts.splice(index, 0, row);
-      save(); renderContracts();
-    }
+    if (type === "influencer") { data.influencers.splice(index, 0, row); save(); renderInfluencers(); }
+    else { data.contracts.splice(index, 0, row); save(); renderContracts(); }
     logHistory("restore", "Undid delete", row.tg || row.agentLine || "");
     lastDeleted = null;
     toast("Restored");
   }
-
   function renderInfluencers() {
     const filter = ($("#infSearch")?.value || "").toLowerCase();
     const tbody = $("#infTable tbody");
@@ -375,39 +375,31 @@
     const wrap = $("#influencers .table-wrap");
     if (!tbody || !cards) return;
     tbody.innerHTML = ""; cards.innerHTML = "";
-
     let visible = 0;
     const rows = sortedData(data.influencers, infSort);
 
     rows.forEach((row) => {
       const i = data.influencers.indexOf(row);
-      const hay = [row.tg, row.fbName, row.fbLink, row.notes]
-        .map(v => (v || "").toLowerCase()).join(" ");
+      const hay = [row.tg, row.fbName, row.fbLink, row.notes].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
 
-      // Desktop row
       const tr = document.createElement("tr");
       ["tg", "fbName", "fbLink", "notes"].forEach(k => {
         const td = document.createElement("td");
-        td.contentEditable = "true";
-        td.dataset.k = k;
-        td.dataset.raw = row[k] || "";
+        td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           if (data.influencers[i][k] !== newVal) {
             const oldVal = data.influencers[i][k] || "";
             data.influencers[i][k] = newVal;
-            save();
-            flashCell(td);
+            save(); flashCell(td);
             logHistory("edit", `Edited influencer (${k})`, `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
           }
           td.innerHTML = escAndHighlight(data.influencers[i][k], filter);
         });
-        td.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); }
-        });
+        td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
       });
       const delTd = document.createElement("td");
@@ -415,11 +407,9 @@
       delBtn.className = "del-btn"; delBtn.title = "Delete";
       delBtn.innerHTML = svgIcon("trash");
       delBtn.addEventListener("click", () => delInfluencer(i));
-      delTd.appendChild(delBtn);
-      tr.appendChild(delTd);
+      delTd.appendChild(delBtn); tr.appendChild(delTd);
       tbody.appendChild(tr);
 
-      // Mobile card
       const card = document.createElement("div");
       card.className = "card";
       card.innerHTML = `
@@ -434,17 +424,11 @@
         </div>
         ${row.fbLink ? `<div class="card-sub" style="margin-top:6px">${escAndHighlight(row.fbLink, filter)}</div>` : ""}
       `;
-      card.addEventListener("click", (e) => {
-        if (e.target.closest(".del-btn")) return;
-        openInfluencerModal(i);
-      });
-      card.querySelector(".del-btn").addEventListener("click", (e) => {
-        e.stopPropagation(); delInfluencer(i);
-      });
+      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openInfluencerModal(i); });
+      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delInfluencer(i); });
       cards.appendChild(card);
     });
 
-    // Empty states
     if (empty && wrap) {
       const table = wrap.querySelector("table");
       if (visible === 0) {
@@ -475,25 +459,19 @@
       myTg: prefs.lastMyTg || ""
     };
     data.contracts.push(newRow);
-    save();
-    renderContracts();
+    save(); renderContracts();
     logHistory("add", "Added contract", newRow.myTg ? `My TG: ${newRow.myTg}` : "");
     toast("Contract added");
   }
-
   function delContract(i) {
     const row = data.contracts[i];
     if (!row) return;
     lastDeleted = { type: "contract", row: { ...row }, index: i };
     data.contracts.splice(i, 1);
-    save();
-    renderContracts();
+    save(); renderContracts();
     logHistory("delete", "Deleted contract", row.agentLine || row.domain || "(blank)");
-    toast("Contract deleted", {
-      icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete
-    });
+    toast("Contract deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
-
   function renderContracts() {
     const filter = ($("#conSearch")?.value || "").toLowerCase();
     const tbody = $("#conTable tbody");
@@ -502,7 +480,6 @@
     const wrap = $("#contracts .table-wrap");
     if (!tbody || !cards) return;
     tbody.innerHTML = ""; cards.innerHTML = "";
-
     let visible = 0;
     const rows = sortedData(data.contracts, conSort);
 
@@ -513,32 +490,26 @@
       if (filter && !hay.includes(filter)) return;
       visible++;
 
-      // Desktop row
       const tr = document.createElement("tr");
       const textFields = ["agentLine","taskPosted","releaseTime","updateTime","contract","first","second","third","vloggerTg","domain"];
       textFields.forEach(k => {
         const td = document.createElement("td");
-        td.contentEditable = "true";
-        td.dataset.k = k;
+        td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           if (data.contracts[i][k] !== newVal) {
             const oldVal = data.contracts[i][k] || "";
             data.contracts[i][k] = newVal;
-            save();
-            flashCell(td);
+            save(); flashCell(td);
             logHistory("edit", `Edited contract (${k})`, `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
           }
           td.innerHTML = escAndHighlight(data.contracts[i][k], filter);
         });
-        td.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); }
-        });
+        td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
       });
 
-      // State select
       const stateTd = document.createElement("td");
       const sel = document.createElement("select");
       sel.className = "state-select " + (STATE_CLASS[row.state] || "");
@@ -555,13 +526,10 @@
         save();
         logHistory("edit", "Changed contract state", `${oldState} → ${sel.value}`);
       });
-      stateTd.appendChild(sel);
-      tr.appendChild(stateTd);
+      stateTd.appendChild(sel); tr.appendChild(stateTd);
 
-      // My TG
       const myTgTd = document.createElement("td");
-      myTgTd.contentEditable = "true";
-      myTgTd.dataset.k = "myTg";
+      myTgTd.contentEditable = "true"; myTgTd.dataset.k = "myTg";
       myTgTd.innerHTML = escAndHighlight(row.myTg, filter);
       myTgTd.addEventListener("blur", () => {
         const newVal = myTgTd.innerText.trim();
@@ -569,28 +537,22 @@
           const oldVal = data.contracts[i].myTg || "";
           data.contracts[i].myTg = newVal;
           if (newVal) { prefs.lastMyTg = newVal; savePrefs(); }
-          save();
-          flashCell(myTgTd);
+          save(); flashCell(myTgTd);
           logHistory("edit", "Edited My TG", `${oldVal || "(blank)"} → ${newVal || "(blank)"}`);
         }
         myTgTd.innerHTML = escAndHighlight(data.contracts[i].myTg, filter);
       });
-      myTgTd.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); }
-      });
+      myTgTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); } });
       tr.appendChild(myTgTd);
 
-      // Delete
       const delTd = document.createElement("td");
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn"; delBtn.title = "Delete";
       delBtn.innerHTML = svgIcon("trash");
       delBtn.addEventListener("click", () => delContract(i));
-      delTd.appendChild(delBtn);
-      tr.appendChild(delTd);
+      delTd.appendChild(delBtn); tr.appendChild(delTd);
       tbody.appendChild(tr);
 
-      // Mobile card
       const card = document.createElement("div");
       card.className = "card";
       const metaRows = [
@@ -619,17 +581,11 @@
               </div>`).join("")}
           </div>` : ""}
       `;
-      card.addEventListener("click", (e) => {
-        if (e.target.closest(".del-btn")) return;
-        openContractModal(i);
-      });
-      card.querySelector(".del-btn").addEventListener("click", (e) => {
-        e.stopPropagation(); delContract(i);
-      });
+      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openContractModal(i); });
+      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delContract(i); });
       cards.appendChild(card);
     });
 
-    // Empty states
     if (empty && wrap) {
       const table = wrap.querySelector("table");
       if (visible === 0) {
@@ -666,14 +622,12 @@
     if (!titleEl || !body) return;
     titleEl.textContent = title;
     body.innerHTML = "";
-
     fields.forEach(f => {
       const wrap = document.createElement("div");
       wrap.className = "field";
       const label = document.createElement("label");
       label.textContent = f.label;
       wrap.appendChild(label);
-
       let input;
       if (f.type === "select") {
         input = document.createElement("select");
@@ -689,19 +643,15 @@
         input.value = f.value || "";
       }
       input.dataset.k = f.key;
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); saveModal(); }
-      });
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveModal(); } });
       wrap.appendChild(input);
       body.appendChild(wrap);
     });
-
     const modal = $("#modal");
     if (modal) modal.hidden = false;
     const first = body.querySelector("input, select");
     if (first) setTimeout(() => first.focus(), 60);
   }
-
   function closeModal() {
     const modal = $("#modal");
     if (modal) modal.hidden = true;
@@ -709,19 +659,15 @@
     if (body) body.innerHTML = "";
     editing = null;
   }
-
   function saveModal() {
     if (!editing || !editing.onSave) { closeModal(); return; }
     const values = {};
-    $$("#modalBody [data-k]").forEach(el => {
-      values[el.dataset.k] = (el.value || "").trim();
-    });
+    $$("#modalBody [data-k]").forEach(el => { values[el.dataset.k] = (el.value || "").trim(); });
     try { editing.onSave(values); }
     catch (e) { console.error("Save failed", e); toast("Save failed", { icon: "trash" }); return; }
     closeModal();
     toast("Saved");
   }
-
   function openInfluencerModal(i) {
     const row = data.influencers[i];
     if (!row) return;
@@ -736,7 +682,6 @@
       logHistory("edit", "Edited influencer (modal)", row.tg || "(blank)");
     });
   }
-
   function openContractModal(i) {
     const row = data.contracts[i];
     if (!row) return;
@@ -763,7 +708,6 @@
 
   /* ============ CSV IMPORT ============ */
   function parseCSV(text) {
-    // Handles quoted fields, commas inside quotes, newlines inside quotes
     const rows = [];
     let cur = [], field = "", inQuotes = false;
     for (let i = 0; i < text.length; i++) {
@@ -777,14 +721,13 @@
         if (c === '"') inQuotes = true;
         else if (c === ",") { cur.push(field); field = ""; }
         else if (c === "\n") { cur.push(field); rows.push(cur); cur = []; field = ""; }
-        else if (c === "\r") { /* ignore */ }
+        else if (c === "\r") {}
         else field += c;
       }
     }
     if (field.length || cur.length) { cur.push(field); rows.push(cur); }
     return rows.filter(r => r.some(v => v.trim() !== ""));
   }
-
   function openCsvModal(target) {
     csvImportTarget = target;
     const modal = $("#csvModal");
@@ -793,18 +736,15 @@
     const preview = $("#csvPreview");
     if (!modal) return;
     title.textContent = target === "influencers" ? "Import Influencers CSV" : "Import Contracts CSV";
-    text.value = "";
-    preview.textContent = "";
+    text.value = ""; preview.textContent = "";
     modal.hidden = false;
     setTimeout(() => text.focus(), 60);
   }
-
   function closeCsvModal() {
     const modal = $("#csvModal");
     if (modal) modal.hidden = true;
     csvImportTarget = null;
   }
-
   function updateCsvPreview() {
     const preview = $("#csvPreview");
     const text = $("#csvText")?.value || "";
@@ -815,20 +755,15 @@
       const headers = rows[0];
       const count = rows.length - 1;
       preview.innerHTML = `Detected <strong>${count}</strong> row${count===1?"":"s"} with columns: <code>${headers.map(esc).join("</code> <code>")}</code>`;
-    } catch(e) {
-      preview.textContent = "Could not parse CSV.";
-    }
+    } catch(e) { preview.textContent = "Could not parse CSV."; }
   }
-
   function doCsvImport() {
     const text = $("#csvText")?.value || "";
     if (!text.trim()) { toast("Nothing to import", { icon: "trash" }); return; }
     const rows = parseCSV(text);
     if (rows.length < 2) { toast("Need headers + at least 1 row", { icon: "trash" }); return; }
-
     const headers = rows[0].map(h => h.trim().toLowerCase());
     const bodyRows = rows.slice(1);
-
     let imported = 0;
 
     if (csvImportTarget === "influencers") {
@@ -840,14 +775,8 @@
       };
       bodyRows.forEach(r => {
         const obj = { tg: "", fbName: "", fbLink: "", notes: "" };
-        headers.forEach((h, idx) => {
-          const key = map[h];
-          if (key) obj[key] = (r[idx] || "").trim();
-        });
-        if (Object.values(obj).some(v => v)) {
-          data.influencers.push(obj);
-          imported++;
-        }
+        headers.forEach((h, idx) => { const key = map[h]; if (key) obj[key] = (r[idx] || "").trim(); });
+        if (Object.values(obj).some(v => v)) { data.influencers.push(obj); imported++; }
       });
     } else {
       const map = {
@@ -877,40 +806,24 @@
             if (key === "state") {
               const found = STATES.find(s => s.toLowerCase() === val.toLowerCase());
               obj.state = found || "Pending";
-            } else {
-              obj[key] = val;
-            }
+            } else obj[key] = val;
           }
         });
-        if (Object.values(obj).some(v => v && v !== "Pending")) {
-          data.contracts.push(obj);
-          imported++;
-        }
+        if (Object.values(obj).some(v => v && v !== "Pending")) { data.contracts.push(obj); imported++; }
       });
     }
-
     save();
-    if (csvImportTarget === "influencers") renderInfluencers();
-    else renderContracts();
-
-    logHistory("import", `Imported ${imported} ${csvImportTarget} from CSV`, `Columns: ${headers.slice(0,5).join(", ")}${headers.length>5?"…":""}`);
+    if (csvImportTarget === "influencers") renderInfluencers(); else renderContracts();
+    logHistory("import", `Imported ${imported} ${csvImportTarget} from CSV`, "");
     toast(`Imported ${imported} row${imported===1?"":"s"}`);
     closeCsvModal();
   }
 
-  /* ============ EXCEL EXPORT ============ */
+  /* ============ EXCEL ============ */
   function downloadExcel() {
-    if (typeof XLSX === "undefined") {
-      toast("Excel library failed to load", { icon: "trash" }); return;
-    }
+    if (typeof XLSX === "undefined") { toast("Excel library failed to load", { icon: "trash" }); return; }
     const dateSlug = todaySlug();
-
-    if (activeTab === "history") {
-      // Export history as CSV
-      exportHistoryCsv();
-      return;
-    }
-
+    if (activeTab === "history") { exportHistoryCsv(); return; }
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       const rows = data.influencers.map(r => ({
@@ -950,8 +863,7 @@
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `history ${todaySlug()}.csv`;
+    a.href = url; a.download = `history ${todaySlug()}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     toast("History CSV downloaded");
@@ -963,10 +875,10 @@
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `backup_${todaySlug()}.json`;
+    a.href = url; a.download = `backup_${todaySlug()}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+    try { localStorage.setItem(BACKUP_TS_KEY, String(Date.now())); } catch(e){}
     toast("Backup exported");
   }
 
@@ -975,9 +887,7 @@
     reader.onload = (ev) => {
       try {
         const imported = JSON.parse(ev.target.result);
-        if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) {
-          throw new Error("bad format");
-        }
+        if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
         if (confirm("Replace ALL current data with this backup?")) {
           data = { influencers: imported.influencers, contracts: imported.contracts };
           if (Array.isArray(imported._history)) history = imported._history;
@@ -990,11 +900,25 @@
           logHistory("restore", "Restored from backup", file.name);
           toast("Backup restored");
         }
-      } catch (e) {
-        toast("Invalid backup file", { icon: "trash" });
-      }
+      } catch (e) { toast("Invalid backup file", { icon: "trash" }); }
     };
     reader.readAsText(file);
+  }
+
+  /* ============ BACKUP REMINDER ============ */
+  function checkBackupReminder() {
+    try {
+      const last = Number(localStorage.getItem(BACKUP_TS_KEY) || 0);
+      const days = last ? (Date.now() - last) / (1000*60*60*24) : 999;
+      if (days >= 3) {
+        setTimeout(() => {
+          toast("It's been " + (last ? Math.floor(days) + " days" : "a while") + " since your last backup", {
+            icon: "check", actionLabel: "Backup now", duration: 8000,
+            onAction: exportJson
+          });
+        }, 2000);
+      }
+    } catch(e){}
   }
 
   /* ============ INIT ============ */
@@ -1005,11 +929,7 @@
     initTabs();
     initSortHeaders();
 
-    const bind = (id, fn) => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener("click", fn);
-    };
-
+    const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
     bind("addInfBtn", addInfluencer);
     bind("addConBtn", addContract);
     bind("downloadExcel", downloadExcel);
@@ -1017,8 +937,6 @@
     bind("modalCloseX", closeModal);
     bind("modalCancel", closeModal);
     bind("modalSave", saveModal);
-
-    // CSV
     bind("csvModalClose", closeCsvModal);
     bind("csvModalCancel", closeCsvModal);
     bind("csvModalImport", doCsvImport);
@@ -1034,47 +952,41 @@
     });
 
     const importInput = $("#importJson");
-    if (importInput) {
-      importInput.addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (file) importJson(file);
-        e.target.value = "";
-      });
-    }
+    if (importInput) importInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) importJson(file);
+      e.target.value = "";
+    });
 
     const importInfCsv = $("#importInfCsv");
-    if (importInfCsv) {
-      importInfCsv.addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const r = new FileReader();
-          r.onload = (ev) => {
-            openCsvModal("influencers");
-            const textEl = $("#csvText");
-            if (textEl) { textEl.value = ev.target.result; updateCsvPreview(); }
-          };
-          r.readAsText(file);
-        }
-        e.target.value = "";
-      });
-    }
+    if (importInfCsv) importInfCsv.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const r = new FileReader();
+        r.onload = (ev) => {
+          openCsvModal("influencers");
+          const textEl = $("#csvText");
+          if (textEl) { textEl.value = ev.target.result; updateCsvPreview(); }
+        };
+        r.readAsText(file);
+      }
+      e.target.value = "";
+    });
 
     const importConCsv = $("#importConCsv");
-    if (importConCsv) {
-      importConCsv.addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const r = new FileReader();
-          r.onload = (ev) => {
-            openCsvModal("contracts");
-            const textEl = $("#csvText");
-            if (textEl) { textEl.value = ev.target.result; updateCsvPreview(); }
-          };
-          r.readAsText(file);
-        }
-        e.target.value = "";
-      });
-    }
+    if (importConCsv) importConCsv.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const r = new FileReader();
+        r.onload = (ev) => {
+          openCsvModal("contracts");
+          const textEl = $("#csvText");
+          if (textEl) { textEl.value = ev.target.result; updateCsvPreview(); }
+        };
+        r.readAsText(file);
+      }
+      e.target.value = "";
+    });
 
     const csvText = $("#csvText");
     if (csvText) csvText.addEventListener("input", updateCsvPreview);
@@ -1083,7 +995,6 @@
     if (infSearch) infSearch.addEventListener("input", renderInfluencers);
     const conSearch = $("#conSearch");
     if (conSearch) conSearch.addEventListener("input", renderContracts);
-
     const histSearch = $("#histSearch");
     if (histSearch) histSearch.addEventListener("input", renderHistory);
     const histTypeFilter = $("#histTypeFilter");
@@ -1116,6 +1027,7 @@
     renderHistoryBadge();
     updateLastSaved();
     updateStatus("Influencers");
+    checkBackupReminder();
   }
 
   if (document.readyState === "loading") {
