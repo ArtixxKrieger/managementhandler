@@ -1,6 +1,8 @@
 /* =========================================================
-   Influencer & Contract Manager v5.3
-   Fix: rows tracked by _id everywhere (not index)
+   Influencer & Contract Manager v5.4
+   - Dual history key support (inf_contract_history + alt)
+   - _id-based row tracking (no more "no username" bug)
+   - Auto-repair on load
    ========================================================= */
 (function () {
   "use strict";
@@ -11,6 +13,7 @@
   const THEME_KEY = "inf_contract_theme";
   const PREFS_KEY = "inf_contract_prefs";
   const HISTORY_KEY = "inf_contract_history";
+  const HISTORY_KEY_ALT = "inf_contract_manager_history";
   const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
   const HISTORY_LIMIT = 20000;
 
@@ -119,13 +122,14 @@
       saveHistory();
       if (activeTab === "history") renderHistory();
     } else {
-      // No matching entry — create one so edits are never lost
       logHistory(entity, row);
     }
   }
 
   function saveHistory() {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
+    const payload = JSON.stringify(history);
+    try { localStorage.setItem(HISTORY_KEY, payload); } catch(e){}
+    try { localStorage.setItem(HISTORY_KEY_ALT, payload); } catch(e){}
   }
 
   function deleteDay(dateKey) {
@@ -470,49 +474,53 @@
     data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
     data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
 
-    // Load history and REPAIR any entries missing rowId by best-effort matching
+    // Load history from EITHER key (whichever has more)
+    let historyRaw = null;
     try {
-      const rawH = localStorage.getItem(HISTORY_KEY);
-      if (rawH) {
-        const parsed = JSON.parse(rawH);
-        if (Array.isArray(parsed)) {
-          history = parsed.filter(h => h && h.entity && h.data).map(h => {
-            // If already has rowId, keep it
-            if (h.rowId) return h;
-            // Otherwise, try to match to a live row
-            let match = null;
-            if (h.entity === "influencer") {
-              match = data.influencers.find(r =>
-                (r.tg && r.tg === h.data.tg) ||
-                (r.fbName && r.fbName === h.data.fbName)
-              );
-            } else {
-              match = data.contracts.find(r =>
-                (r.agentLine && r.agentLine === h.data.agentLine) ||
-                (r.domain && r.domain === h.data.domain)
-              );
-            }
-            if (match) {
-              h.rowId = match._id;
-              h.data = stripId(match); // <- use the LIVE data, not the stale snapshot
-            }
-            return h;
-          });
-
-          // Second pass: for any history entry that has rowId, overwrite with live data
-          // so stale "no username" snapshots get fixed
-          history.forEach(h => {
-            if (!h.rowId) return;
-            let live = null;
-            if (h.entity === "influencer") live = data.influencers.find(r => r._id === h.rowId);
-            else live = data.contracts.find(r => r._id === h.rowId);
-            if (live) h.data = stripId(live);
-          });
-
-          saveHistory();
-        }
-      }
+      const a = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+      const b = JSON.parse(localStorage.getItem(HISTORY_KEY_ALT) || "[]");
+      const aLen = Array.isArray(a) ? a.length : 0;
+      const bLen = Array.isArray(b) ? b.length : 0;
+      if (aLen >= bLen && aLen > 0) historyRaw = a;
+      else if (bLen > 0) historyRaw = b;
     } catch(e){}
+
+    if (historyRaw) {
+      history = historyRaw.filter(h => h && h.entity && h.data).map(h => {
+        // If already has rowId, keep it
+        if (h.rowId) return h;
+        // Otherwise, try to match to a live row
+        let match = null;
+        if (h.entity === "influencer") {
+          match = data.influencers.find(r =>
+            (r.tg && r.tg === h.data.tg) ||
+            (r.fbName && r.fbName === h.data.fbName)
+          );
+        } else {
+          match = data.contracts.find(r =>
+            (r.agentLine && r.agentLine === h.data.agentLine) ||
+            (r.domain && r.domain === h.data.domain)
+          );
+        }
+        if (match) {
+          h.rowId = match._id;
+          h.data = stripId(match);
+        }
+        return h;
+      });
+
+      // Second pass: for any history entry with rowId, refresh from live data
+      history.forEach(h => {
+        if (!h.rowId) return;
+        let live = null;
+        if (h.entity === "influencer") live = data.influencers.find(r => r._id === h.rowId);
+        else live = data.contracts.find(r => r._id === h.rowId);
+        if (live) h.data = stripId(live);
+      });
+
+      // Save repaired history to BOTH keys
+      saveHistory();
+    }
     if (!Array.isArray(history)) history = [];
   }
 
@@ -646,7 +654,7 @@
     const rows = sortedData(data.influencers, infSort);
 
     rows.forEach((row) => {
-      const rowId = row._id;   // <-- capture stable id
+      const rowId = row._id;
       const hay = [row.tg, row.fbName, row.fbLink, row.notes].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
