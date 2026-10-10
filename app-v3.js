@@ -1,6 +1,6 @@
 /* =========================================================
-   Influencer & Contract Manager v5.2
-   Fix: History snapshot now uses stable row IDs
+   Influencer & Contract Manager v5.3
+   Fix: rows tracked by _id everywhere (not index)
    ========================================================= */
 (function () {
   "use strict";
@@ -42,12 +42,10 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-  /* ---------- ID GENERATOR ---------- */
   function uid() {
     return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
-  /* ---------- HELPERS ---------- */
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -62,7 +60,6 @@
   function svgIcon(name, size = 16) {
     return `<svg class="icon-svg" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
   }
-
   function pad(n) { return String(n).padStart(2, "0"); }
   function todaySlug() {
     const d = new Date();
@@ -86,9 +83,12 @@
   }
 
   /* ---------- HISTORY ---------- */
-  // Each history entry: { id, ts, dateKey, entity, rowId, data }
-  // - rowId: stable ID that matches the live row's _id
-  // - data: full snapshot of that row (updated in place on edits)
+  function stripId(row) {
+    const copy = { ...row };
+    delete copy._id;
+    return copy;
+  }
+
   function logHistory(entity, row) {
     const ts = Date.now();
     history.unshift({
@@ -96,7 +96,7 @@
       ts,
       dateKey: dayKey(ts),
       entity,
-      rowId: row._id || uid(),
+      rowId: row._id,
       data: stripId(row)
     });
     if (history.length > HISTORY_LIMIT) history.length = HISTORY_LIMIT;
@@ -107,23 +107,21 @@
 
   function updateHistorySnapshot(entity, row) {
     if (!row || !row._id) return;
+    let updated = false;
     for (let i = 0; i < history.length; i++) {
       const h = history[i];
       if (h.entity === entity && h.rowId === row._id) {
         h.data = stripId(row);
-        saveHistory();
-        return;
+        updated = true;
       }
     }
-    // Fallback: if no match found but the row was just created,
-    // add a fresh entry so nothing is lost
-    logHistory(entity, row);
-  }
-
-  function stripId(row) {
-    const copy = { ...row };
-    delete copy._id;
-    return copy;
+    if (updated) {
+      saveHistory();
+      if (activeTab === "history") renderHistory();
+    } else {
+      // No matching entry — create one so edits are never lost
+      logHistory(entity, row);
+    }
   }
 
   function saveHistory() {
@@ -394,7 +392,6 @@
     if (el) el.classList.remove("show");
   }
 
-  /* ---------- STATUS ---------- */
   function updateStatus(text) {
     const el = $("#statusText");
     if (el && text) el.textContent = text;
@@ -407,7 +404,6 @@
   }
   setInterval(updateLastSaved, 5000);
 
-  /* ---------- THEME ---------- */
   function initTheme() {
     let saved = localStorage.getItem(THEME_KEY);
     if (!saved) saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -434,7 +430,7 @@
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
   }
 
-  /* ---------- LOAD ---------- */
+  /* ---------- LOAD + REPAIR ---------- */
   function load() {
     let loaded = false;
     try {
@@ -470,38 +466,50 @@
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
-    // Ensure every row has a stable _id (migrate older rows)
+    // Ensure every live row has a stable _id
     data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
     data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
 
-    // History — migrate old entries (no rowId → try to match by content)
+    // Load history and REPAIR any entries missing rowId by best-effort matching
     try {
       const rawH = localStorage.getItem(HISTORY_KEY);
       if (rawH) {
         const parsed = JSON.parse(rawH);
         if (Array.isArray(parsed)) {
           history = parsed.filter(h => h && h.entity && h.data).map(h => {
-            if (!h.rowId) {
-              // Try to link to a live row
-              let match = null;
-              if (h.entity === "influencer") {
-                match = data.influencers.find(r =>
-                  (r.tg && r.tg === h.data.tg) ||
-                  (r.fbName && r.fbName === h.data.fbName)
-                );
-              } else {
-                match = data.contracts.find(r =>
-                  (r.agentLine && r.agentLine === h.data.agentLine) ||
-                  (r.domain && r.domain === h.data.domain)
-                );
-              }
-              if (match) {
-                h.rowId = match._id;
-                h.data = stripId(match);
-              }
+            // If already has rowId, keep it
+            if (h.rowId) return h;
+            // Otherwise, try to match to a live row
+            let match = null;
+            if (h.entity === "influencer") {
+              match = data.influencers.find(r =>
+                (r.tg && r.tg === h.data.tg) ||
+                (r.fbName && r.fbName === h.data.fbName)
+              );
+            } else {
+              match = data.contracts.find(r =>
+                (r.agentLine && r.agentLine === h.data.agentLine) ||
+                (r.domain && r.domain === h.data.domain)
+              );
+            }
+            if (match) {
+              h.rowId = match._id;
+              h.data = stripId(match); // <- use the LIVE data, not the stale snapshot
             }
             return h;
           });
+
+          // Second pass: for any history entry that has rowId, overwrite with live data
+          // so stale "no username" snapshots get fixed
+          history.forEach(h => {
+            if (!h.rowId) return;
+            let live = null;
+            if (h.entity === "influencer") live = data.influencers.find(r => r._id === h.rowId);
+            else live = data.contracts.find(r => r._id === h.rowId);
+            if (live) h.data = stripId(live);
+          });
+
+          saveHistory();
         }
       }
     } catch(e){}
@@ -554,7 +562,7 @@
   }
 
   function sortedData(arr, sortState) {
-    if (!sortState.key) return arr;
+    if (!sortState.key) return arr.slice();
     const { key, dir } = sortState;
     return arr.map((row, idx) => ({ row, idx }))
       .sort((a, b) => {
@@ -608,11 +616,12 @@
     toast("Influencer added");
   }
 
-  function delInfluencer(i) {
-    const row = data.influencers[i];
-    if (!row) return;
-    lastDeleted = { type: "influencer", row: { ...row }, index: i };
-    data.influencers.splice(i, 1);
+  function delInfluencerById(id) {
+    const idx = data.influencers.findIndex(r => r._id === id);
+    if (idx === -1) return;
+    const row = data.influencers[idx];
+    lastDeleted = { type: "influencer", row: { ...row }, index: idx };
+    data.influencers.splice(idx, 1);
     save(); renderInfluencers();
     toast("Influencer deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
@@ -637,7 +646,7 @@
     const rows = sortedData(data.influencers, infSort);
 
     rows.forEach((row) => {
-      const i = data.influencers.indexOf(row);
+      const rowId = row._id;   // <-- capture stable id
       const hay = [row.tg, row.fbName, row.fbLink, row.notes].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
@@ -649,12 +658,14 @@
         td.innerHTML = escAndHighlight(row[k], filter);
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
-          if (data.influencers[i][k] !== newVal) {
-            data.influencers[i][k] = newVal;
+          const live = data.influencers.find(r => r._id === rowId);
+          if (!live) return;
+          if (live[k] !== newVal) {
+            live[k] = newVal;
             save(); flashCell(td);
-            updateHistorySnapshot("influencer", data.influencers[i]);
+            updateHistorySnapshot("influencer", live);
           }
-          td.innerHTML = escAndHighlight(data.influencers[i][k], filter);
+          td.innerHTML = escAndHighlight(live[k], filter);
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
@@ -663,7 +674,7 @@
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn"; delBtn.title = "Delete";
       delBtn.innerHTML = svgIcon("trash");
-      delBtn.addEventListener("click", () => delInfluencer(i));
+      delBtn.addEventListener("click", () => delInfluencerById(rowId));
       delTd.appendChild(delBtn); tr.appendChild(delTd);
       tbody.appendChild(tr);
 
@@ -681,8 +692,8 @@
         </div>
         ${row.fbLink ? `<div class="card-sub" style="margin-top:6px">${escAndHighlight(row.fbLink, filter)}</div>` : ""}
       `;
-      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openInfluencerModal(i); });
-      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delInfluencer(i); });
+      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openInfluencerModalById(rowId); });
+      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delInfluencerById(rowId); });
       cards.appendChild(card);
     });
 
@@ -721,11 +732,12 @@
     logHistory("contract", row);
     toast("Contract added");
   }
-  function delContract(i) {
-    const row = data.contracts[i];
-    if (!row) return;
-    lastDeleted = { type: "contract", row: { ...row }, index: i };
-    data.contracts.splice(i, 1);
+  function delContractById(id) {
+    const idx = data.contracts.findIndex(r => r._id === id);
+    if (idx === -1) return;
+    const row = data.contracts[idx];
+    lastDeleted = { type: "contract", row: { ...row }, index: idx };
+    data.contracts.splice(idx, 1);
     save(); renderContracts();
     toast("Contract deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
@@ -742,7 +754,7 @@
     const rows = sortedData(data.contracts, conSort);
 
     rows.forEach((row) => {
-      const i = data.contracts.indexOf(row);
+      const rowId = row._id;
       const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state]
         .map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
@@ -756,12 +768,14 @@
         td.innerHTML = escAndHighlight(row[k], filter);
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
-          if (data.contracts[i][k] !== newVal) {
-            data.contracts[i][k] = newVal;
+          const live = data.contracts.find(r => r._id === rowId);
+          if (!live) return;
+          if (live[k] !== newVal) {
+            live[k] = newVal;
             save(); flashCell(td);
-            updateHistorySnapshot("contract", data.contracts[i]);
+            updateHistorySnapshot("contract", live);
           }
-          td.innerHTML = escAndHighlight(data.contracts[i][k], filter);
+          td.innerHTML = escAndHighlight(live[k], filter);
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
@@ -777,10 +791,12 @@
         sel.appendChild(opt);
       });
       sel.addEventListener("change", () => {
-        data.contracts[i].state = sel.value;
+        const live = data.contracts.find(r => r._id === rowId);
+        if (!live) return;
+        live.state = sel.value;
         sel.className = "state-select " + (STATE_CLASS[sel.value] || "");
         save();
-        updateHistorySnapshot("contract", data.contracts[i]);
+        updateHistorySnapshot("contract", live);
       });
       stateTd.appendChild(sel); tr.appendChild(stateTd);
 
@@ -789,13 +805,15 @@
       myTgTd.innerHTML = escAndHighlight(row.myTg, filter);
       myTgTd.addEventListener("blur", () => {
         const newVal = myTgTd.innerText.trim();
-        if (data.contracts[i].myTg !== newVal) {
-          data.contracts[i].myTg = newVal;
+        const live = data.contracts.find(r => r._id === rowId);
+        if (!live) return;
+        if (live.myTg !== newVal) {
+          live.myTg = newVal;
           if (newVal) { prefs.lastMyTg = newVal; savePrefs(); }
           save(); flashCell(myTgTd);
-          updateHistorySnapshot("contract", data.contracts[i]);
+          updateHistorySnapshot("contract", live);
         }
-        myTgTd.innerHTML = escAndHighlight(data.contracts[i].myTg, filter);
+        myTgTd.innerHTML = escAndHighlight(live.myTg, filter);
       });
       myTgTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); } });
       tr.appendChild(myTgTd);
@@ -804,7 +822,7 @@
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn"; delBtn.title = "Delete";
       delBtn.innerHTML = svgIcon("trash");
-      delBtn.addEventListener("click", () => delContract(i));
+      delBtn.addEventListener("click", () => delContractById(rowId));
       delTd.appendChild(delBtn); tr.appendChild(delTd);
       tbody.appendChild(tr);
 
@@ -836,8 +854,8 @@
               </div>`).join("")}
           </div>` : ""}
       `;
-      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openContractModal(i); });
-      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delContract(i); });
+      card.addEventListener("click", (e) => { if (e.target.closest(".del-btn")) return; openContractModalById(rowId); });
+      card.querySelector(".del-btn").addEventListener("click", (e) => { e.stopPropagation(); delContractById(rowId); });
       cards.appendChild(card);
     });
 
@@ -922,8 +940,8 @@
     closeModal();
     toast("Saved");
   }
-  function openInfluencerModal(i) {
-    const row = data.influencers[i];
+  function openInfluencerModalById(id) {
+    const row = data.influencers.find(r => r._id === id);
     if (!row) return;
     openModal("Edit Influencer", [
       { key: "tg",     label: "TG Username", value: row.tg },
@@ -931,13 +949,13 @@
       { key: "fbLink", label: "FB Link",     value: row.fbLink },
       { key: "notes",  label: "Notes",       value: row.notes }
     ], (v) => {
-      Object.assign(data.influencers[i], v);
+      Object.assign(row, v);
       save(); renderInfluencers();
-      updateHistorySnapshot("influencer", data.influencers[i]);
+      updateHistorySnapshot("influencer", row);
     });
   }
-  function openContractModal(i) {
-    const row = data.contracts[i];
+  function openContractModalById(id) {
+    const row = data.contracts.find(r => r._id === id);
     if (!row) return;
     openModal("Edit Contract", [
       { key: "agentLine",   label: "Agent Line",         value: row.agentLine },
@@ -953,10 +971,10 @@
       { key: "state",       label: "State", type: "select", options: STATES, value: row.state },
       { key: "myTg",        label: "My Telegram Name",   value: row.myTg }
     ], (v) => {
-      Object.assign(data.contracts[i], v);
+      Object.assign(row, v);
       if (v.myTg) { prefs.lastMyTg = v.myTg; savePrefs(); }
       save(); renderContracts();
-      updateHistorySnapshot("contract", data.contracts[i]);
+      updateHistorySnapshot("contract", row);
     });
   }
 
@@ -1028,7 +1046,7 @@
       bodyRows.forEach(r => {
         const obj = { _id: uid(), tg: "", fbName: "", fbLink: "", notes: "" };
         headers.forEach((h, idx) => { const key = map[h]; if (key) obj[key] = (r[idx] || "").trim(); });
-        if (Object.values(obj).some(v => v && v !== obj._id)) {
+        if (obj.tg || obj.fbName || obj.fbLink || obj.notes) {
           data.influencers.push(obj);
           logHistory("influencer", obj);
           imported++;
@@ -1066,7 +1084,7 @@
             } else obj[key] = val;
           }
         });
-        if (Object.values(obj).some(v => v && v !== "Pending" && v !== obj._id)) {
+        if (obj.agentLine || obj.domain || obj.vloggerTg || obj.myTg || obj.contract) {
           data.contracts.push(obj);
           logHistory("contract", obj);
           imported++;
@@ -1110,7 +1128,6 @@
     }
   }
 
-  /* ============ HISTORY CSV ============ */
   function exportHistoryCsv() {
     if (!history.length) { toast("No history to export", { icon: "trash" }); return; }
     const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Notes,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
@@ -1137,7 +1154,6 @@
     toast("History CSV downloaded");
   }
 
-  /* ============ JSON ============ */
   function exportJson() {
     const payload = { ...data, _history: history, _prefs: prefs, _exportedAt: Date.now() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1157,7 +1173,6 @@
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
         if (confirm("Replace ALL current data with this backup?")) {
           data = { influencers: imported.influencers, contracts: imported.contracts };
-          // Ensure IDs
           data.influencers.forEach(r => { if (!r._id) r._id = uid(); });
           data.contracts.forEach(r => { if (!r._id) r._id = uid(); });
           if (Array.isArray(imported._history)) history = imported._history.filter(h => h && h.entity && h.data);
