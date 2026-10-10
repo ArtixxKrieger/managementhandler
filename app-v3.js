@@ -1,8 +1,9 @@
 /* =========================================================
-   Influencer & Contract Manager v5
-   - History = day cards → drill into day → see data added that day
-   - Only "add" events are logged (edits update in-place, deletes keep snapshot)
-   - 20,000 entry cap (~16 months at your volume)
+   Influencer & Contract Manager v5.1
+   - History = day cards → drill into day
+   - Delete whole day from history
+   - Only "add" events logged; edits update in-place
+   - 20,000 entry cap (~16 months)
    ========================================================= */
 (function () {
   "use strict";
@@ -14,7 +15,7 @@
   const PREFS_KEY = "inf_contract_prefs";
   const HISTORY_KEY = "inf_contract_history";
   const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
-  const HISTORY_LIMIT = 20000;   // ~16 months at 40 entries/day
+  const HISTORY_LIMIT = 20000;
 
   const STATES = ["Pending", "Done", "Account banned", "In progress"];
   const STATE_CLASS = {
@@ -25,7 +26,7 @@
   };
 
   let data = { influencers: [], contracts: [] };
-  let history = [];   // array of { id, ts, dateKey, entity, data: {...} }
+  let history = [];
   let prefs = { lastMyTg: "" };
   let editing = null;
   let lastDeleted = null;
@@ -33,16 +34,14 @@
   let activeTab = "influencers";
   let csvImportTarget = null;
 
-  // History view state
-  let histView = "days";        // "days" | "detail"
-  let histSelectedDay = null;   // "YYYY-MM-DD"
-  let histDetailFilter = "all"; // "all" | "influencers" | "contracts"
+  let histView = "days";
+  let histSelectedDay = null;
+  let histDetailFilter = "all";
   let histDaysShown = 30;
 
   const infSort = { key: null, dir: 1 };
   const conSort = { key: null, dir: 1 };
 
-  /* ---------- HELPERS ---------- */
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
@@ -71,7 +70,6 @@
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   }
   function displayDay(dateKey) {
-    // "2026-10-10" → "10-10-2026"
     const [y, m, d] = dateKey.split("-");
     return `${m}-${d}-${y}`;
   }
@@ -84,9 +82,8 @@
     return new Date(ts).toLocaleDateString();
   }
 
-  /* ---------- HISTORY (new schema) ---------- */
+  /* ---------- HISTORY ---------- */
   function logHistory(entity, rowSnapshot) {
-    // entity: "influencer" | "contract"
     const ts = Date.now();
     history.unshift({
       id: ts + Math.random(),
@@ -102,10 +99,6 @@
   }
 
   function updateHistorySnapshot(entity, rowIndex, newSnapshot) {
-    // Called after edit: finds most recent history entry for this row and updates it
-    // (so history reflects current data, not stale)
-    // Matching heuristic: same entity + matching (tg OR fbName) for influencers,
-    // (agentLine + domain) for contracts.
     const row = newSnapshot;
     for (let i = 0; i < history.length; i++) {
       const h = history[i];
@@ -113,17 +106,33 @@
       if (entity === "influencer") {
         if (h.data.tg === row.tg && h.data.fbName === row.fbName) {
           h.data = { ...row };
-          save();
+          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
           return;
         }
       } else {
         if (h.data.agentLine === row.agentLine && h.data.domain === row.domain) {
           h.data = { ...row };
-          save();
+          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
           return;
         }
       }
     }
+  }
+
+  function deleteDay(dateKey) {
+    const before = history.length;
+    const toRemove = history.filter(h => h.dateKey === dateKey).length;
+    if (!toRemove) return;
+    if (!confirm(`Delete ${displayDay(dateKey)} from history?\n\n${toRemove} entr${toRemove===1?"y":"ies"} will be removed.\nYour live influencers and contracts lists are NOT affected.`)) return;
+    history = history.filter(h => h.dateKey !== dateKey);
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e){}
+    if (histSelectedDay === dateKey) {
+      histSelectedDay = null;
+      histView = "days";
+    }
+    renderHistory();
+    renderHistoryBadge();
+    toast(`Deleted ${toRemove} entr${toRemove===1?"y":"ies"} from ${displayDay(dateKey)}`, { icon: "trash" });
   }
 
   function renderHistoryBadge() {
@@ -132,7 +141,6 @@
   }
 
   function getDaysMap() {
-    // Returns Map<dateKey, { influencers: [], contracts: [] }>
     const map = new Map();
     history.forEach(h => {
       if (!map.has(h.dateKey)) map.set(h.dateKey, { influencers: [], contracts: [] });
@@ -156,7 +164,6 @@
       return;
     }
 
-    // Days view
     daysView.hidden = false;
     detailView.hidden = true;
 
@@ -164,14 +171,10 @@
     const monthFilter = $("#histMonthFilter")?.value || "";
 
     const daysMap = getDaysMap();
-    let dayKeys = Array.from(daysMap.keys()).sort((a, b) => b.localeCompare(a)); // newest first
+    let dayKeys = Array.from(daysMap.keys()).sort((a, b) => b.localeCompare(a));
 
-    // Month filter (value format: "YYYY-MM")
-    if (monthFilter) {
-      dayKeys = dayKeys.filter(k => k.startsWith(monthFilter));
-    }
+    if (monthFilter) dayKeys = dayKeys.filter(k => k.startsWith(monthFilter));
 
-    // Search filter
     if (searchFilter) {
       dayKeys = dayKeys.filter(k => {
         const bucket = daysMap.get(k);
@@ -186,10 +189,8 @@
       });
     }
 
-    // Populate month dropdown
     populateMonthFilter(Array.from(getDaysMap().keys()));
 
-    // Paginate
     const shown = dayKeys.slice(0, histDaysShown);
     const hasMore = dayKeys.length > shown.length;
 
@@ -221,9 +222,19 @@
             ${conCount ? `<span class="day-card-chip chip-con">${svgIcon("file", 11)} ${conCount} contract${conCount===1?"":"s"}</span>` : ""}
           </div>
         </div>
-        <div class="day-card-arrow">${svgIcon("chevron-right", 18)}</div>
+        <div class="day-card-actions">
+          <button class="del-btn" title="Delete this day" data-del-day="${key}">${svgIcon("trash")}</button>
+          <div class="day-card-arrow">${svgIcon("chevron-right", 18)}</div>
+        </div>
       `;
-      card.addEventListener("click", () => openDayDetail(key));
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("[data-del-day]")) return;
+        openDayDetail(key);
+      });
+      card.querySelector("[data-del-day]").addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteDay(key);
+      });
       daysContainer.appendChild(card);
     });
 
@@ -234,7 +245,7 @@
     const sel = $("#histMonthFilter");
     if (!sel) return;
     const months = new Set();
-    allKeys.forEach(k => months.add(k.slice(0, 7))); // YYYY-MM
+    allKeys.forEach(k => months.add(k.slice(0, 7)));
     const sorted = Array.from(months).sort((a, b) => b.localeCompare(a));
     const current = sel.value;
     sel.innerHTML = `<option value="">All months</option>` +
@@ -249,7 +260,6 @@
     histSelectedDay = key;
     histDetailFilter = "all";
     histView = "detail";
-    // Reset tab UI
     $$(".hist-tab").forEach(t => t.classList.toggle("active", t.dataset.histTab === "all"));
     renderHistory();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -289,9 +299,7 @@
     if (showInf && bucket.influencers.length) {
       const sec = document.createElement("div");
       sec.className = "hist-section";
-      sec.innerHTML = `
-        <div class="hist-section-head">${svgIcon("users", 14)} Influencers · ${bucket.influencers.length}</div>
-      `;
+      sec.innerHTML = `<div class="hist-section-head">${svgIcon("users", 14)} Influencers · ${bucket.influencers.length}</div>`;
       bucket.influencers.forEach(h => {
         const r = h.data;
         const el = document.createElement("div");
@@ -313,9 +321,7 @@
     if (showCon && bucket.contracts.length) {
       const sec = document.createElement("div");
       sec.className = "hist-section";
-      sec.innerHTML = `
-        <div class="hist-section-head">${svgIcon("file", 14)} Contracts · ${bucket.contracts.length}</div>
-      `;
+      sec.innerHTML = `<div class="hist-section-head">${svgIcon("file", 14)} Contracts · ${bucket.contracts.length}</div>`;
       bucket.contracts.forEach(h => {
         const r = h.data;
         const el = document.createElement("div");
@@ -408,7 +414,6 @@
   }
   function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); }
 
-  /* ---------- PREFS ---------- */
   function loadPrefs() {
     try {
       const raw = localStorage.getItem(PREFS_KEY);
@@ -419,7 +424,7 @@
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
   }
 
-  /* ---------- LOAD WITH MIGRATION ---------- */
+  /* ---------- LOAD ---------- */
   function load() {
     let loaded = false;
     try {
@@ -455,7 +460,6 @@
     if (!Array.isArray(data.influencers)) data.influencers = [];
     if (!Array.isArray(data.contracts)) data.contracts = [];
 
-    // History — migrate old shape (title/details) to new shape (entity/data) gracefully
     try {
       const rawH = localStorage.getItem(HISTORY_KEY);
       if (rawH) {
@@ -468,7 +472,6 @@
     if (!Array.isArray(history)) history = [];
   }
 
-  /* ---------- SAVE ---------- */
   function save() {
     const payload = JSON.stringify(data);
     try {
@@ -490,7 +493,6 @@
     renderHistoryBadge();
   }
 
-  /* ---------- TABS ---------- */
   function initTabs() {
     $$(".tab").forEach(tab => {
       tab.addEventListener("click", () => {
@@ -515,7 +517,6 @@
     });
   }
 
-  /* ---------- SORT ---------- */
   function sortedData(arr, sortState) {
     if (!sortState.key) return arr;
     const { key, dir } = sortState;
@@ -569,7 +570,6 @@
     logHistory("influencer", row);
     toast("Influencer added");
   }
-
   function delInfluencer(i) {
     const row = data.influencers[i];
     if (!row) return;
@@ -682,7 +682,6 @@
     logHistory("contract", row);
     toast("Contract added");
   }
-
   function delContract(i) {
     const row = data.contracts[i];
     if (!row) return;
@@ -831,7 +830,6 @@
     setTimeout(() => td.classList.remove("flash"), 900);
   }
 
-  /* ============ MODAL ============ */
   function openModal(title, fields, onSave) {
     editing = { onSave };
     const titleEl = $("#modalTitle");
@@ -923,7 +921,7 @@
     });
   }
 
-  /* ============ CSV IMPORT ============ */
+  /* ============ CSV ============ */
   function parseCSV(text) {
     const rows = [];
     let cur = [], field = "", inQuotes = false;
@@ -1099,7 +1097,7 @@
     toast("History CSV downloaded");
   }
 
-  /* ============ JSON BACKUP ============ */
+  /* ============ JSON ============ */
   function exportJson() {
     const payload = { ...data, _history: history, _prefs: prefs, _exportedAt: Date.now() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1133,7 +1131,6 @@
     reader.readAsText(file);
   }
 
-  /* ============ BACKUP REMINDER ============ */
   function checkBackupReminder() {
     try {
       const last = Number(localStorage.getItem(BACKUP_TS_KEY) || 0);
@@ -1149,7 +1146,6 @@
     } catch(e){}
   }
 
-  /* ============ INIT ============ */
   function init() {
     load();
     loadPrefs();
@@ -1181,12 +1177,10 @@
       }
     });
 
-    // History tab buttons
     $$(".hist-tab").forEach(t => {
       t.addEventListener("click", () => setHistDetailFilter(t.dataset.histTab));
     });
 
-    // History filters
     const histSearch = $("#histSearch");
     if (histSearch) histSearch.addEventListener("input", () => { histDaysShown = 30; renderHistory(); });
     const histMonthFilter = $("#histMonthFilter");
