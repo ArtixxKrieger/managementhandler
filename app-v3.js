@@ -22,7 +22,9 @@
   };
 
   const INF_FIELDS = ["tg", "fbName", "fbLink", "remarks"];
+  const INF_DUP_FIELDS = ["tg", "fbName", "fbLink"];
   const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
+  const CON_DUP_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
 
   let data = { influencers: [], contracts: [] };
   let history = [];
@@ -83,6 +85,31 @@
     if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
     if (diff < 604800) return `${Math.floor(diff/86400)}d ago`;
     return new Date(ts).toLocaleDateString();
+  }
+
+  function norm(v) {
+    return String(v == null ? "" : v).trim().toLowerCase();
+  }
+
+  function dupSet(rows, fields) {
+    const map = {};
+    fields.forEach(f => { map[f] = new Map(); });
+    rows.forEach(r => {
+      fields.forEach(f => {
+        const v = norm(r[f]);
+        if (!v) return;
+        const m = map[f];
+        m.set(v, (m.get(v) || 0) + 1);
+      });
+    });
+    const out = {};
+    fields.forEach(f => {
+      out[f] = new Set();
+      map[f].forEach((count, key) => {
+        if (count > 1) out[f].add(key);
+      });
+    });
+    return out;
   }
 
   function stripId(row) {
@@ -781,6 +808,7 @@
     tbody.innerHTML = ""; cards.innerHTML = "";
     let visible = 0;
     const rows = sortedData(data.influencers, infSort);
+    const dups = dupSet(data.influencers, INF_DUP_FIELDS);
 
     rows.forEach((row) => {
       const rowId = row._id;
@@ -793,6 +821,9 @@
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
+        if (INF_DUP_FIELDS.includes(k) && dups[k].has(norm(row[k]))) {
+          td.classList.add("dup");
+        }
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           const live = data.influencers.find(r => r._id === rowId);
@@ -803,6 +834,7 @@
             updateHistorySnapshot("influencer", live);
           }
           td.innerHTML = escAndHighlight(live[k], filter);
+          renderInfluencers();
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
@@ -817,10 +849,11 @@
 
       const card = document.createElement("div");
       card.className = "card";
+      const infDup = (INF_DUP_FIELDS.some(k => dups[k].has(norm(row[k]))));
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
-            <div class="card-title">${escAndHighlight(row.tg, filter) || "—"}</div>
+            <div class="card-title">${escAndHighlight(row.tg, filter) || "—"}${infDup ? ' <span class="dup-badge">duplicate</span>' : ''}</div>
             <div class="card-sub">${escAndHighlight(row.fbName, filter) || "No FB name"}</div>
           </div>
           <div class="card-actions">
@@ -888,6 +921,7 @@
     tbody.innerHTML = ""; cards.innerHTML = "";
     let visible = 0;
     const rows = sortedData(data.contracts, conSort);
+    const dups = dupSet(data.contracts, CON_DUP_FIELDS);
 
     rows.forEach((row) => {
       const rowId = row._id;
@@ -901,6 +935,9 @@
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
+        if (CON_DUP_FIELDS.includes(k) && dups[k].has(norm(row[k]))) {
+          td.classList.add("dup");
+        }
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           const live = data.contracts.find(r => r._id === rowId);
@@ -911,6 +948,7 @@
             updateHistorySnapshot("contract", live);
           }
           td.innerHTML = escAndHighlight(live[k], filter);
+          renderContracts();
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
@@ -980,6 +1018,7 @@
 
       const card = document.createElement("div");
       card.className = "card";
+      const conDup = CON_DUP_FIELDS.some(k => dups[k].has(norm(row[k])));
       const metaRows = [
         ["Vlogger", row.vloggerTg],
         ["Contract", row.contract],
@@ -990,7 +1029,7 @@
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
-            <div class="card-title">${escAndHighlight(row.domain, filter) || "—"}</div>
+            <div class="card-title">${escAndHighlight(row.domain, filter) || "—"}${conDup ? ' <span class="dup-badge">duplicate</span>' : ''}</div>
             ${row.taskPosted ? `<div class="card-sub">Task: ${escAndHighlight(row.taskPosted, filter)}</div>` : ""}
           </div>
           <div class="card-actions">
@@ -1300,36 +1339,21 @@
       if (h.entity === "influencer") {
         const r = h.data;
         return {
-          "Date": date,
-          "Time": time,
-          "Entity": "influencer",
-          "TG Username": r.tg || "",
-          "FB Name": r.fbName || "",
-          "FB Link": r.fbLink || "",
-          "Remarks": r.remarks || "",
-          "Agent Line": "",
-          "Domain": "",
-          "Vlogger TG": "",
-          "Contract": "",
-          "State": "",
-          "My TG": ""
+          "Date": date, "Time": time, "Entity": "influencer",
+          "TG Username": r.tg || "", "FB Name": r.fbName || "",
+          "FB Link": r.fbLink || "", "Remarks": r.remarks || "",
+          "Agent Line": "", "Domain": "", "Vlogger TG": "", "Contract": "",
+          "State": "", "My TG": ""
         };
       } else {
         const r = h.data;
         return {
-          "Date": date,
-          "Time": time,
-          "Entity": "contract",
-          "TG Username": "",
-          "FB Name": "",
-          "FB Link": "",
+          "Date": date, "Time": time, "Entity": "contract",
+          "TG Username": "", "FB Name": "", "FB Link": "",
           "Remarks": r.remarks || "",
-          "Agent Line": r.agentLine || "",
-          "Domain": r.domain || "",
-          "Vlogger TG": r.vloggerTg || "",
-          "Contract": r.contract || "",
-          "State": r.state || "",
-          "My TG": r.myTg || ""
+          "Agent Line": r.agentLine || "", "Domain": r.domain || "",
+          "Vlogger TG": r.vloggerTg || "", "Contract": r.contract || "",
+          "State": r.state || "", "My TG": r.myTg || ""
         };
       }
     });
@@ -1659,6 +1683,7 @@
 
     renderCounts();
     renderInfluencers();
+    renderContracts();
     updateLastSaved();
     updateStatus("Influencers");
     checkBackupReminder();
