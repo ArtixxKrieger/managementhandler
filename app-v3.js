@@ -111,7 +111,6 @@
     });
     if (history.length > HISTORY_LIMIT) history.length = HISTORY_LIMIT;
     saveHistory();
-    renderHistoryBadge();
     if (activeTab === "history" && histView === "days") renderHistory();
   }
 
@@ -161,13 +160,7 @@
       histView = "days";
     }
     renderHistory();
-    renderHistoryBadge();
     toast(`Deleted ${toRemove} entr${toRemove===1?"y":"ies"} from ${displayDay(dateKey)}`, { icon: "trash" });
-  }
-
-  function renderHistoryBadge() {
-    const el = $("#histBadge");
-    if (el) el.textContent = history.length;
   }
 
   function getDaysMap() {
@@ -649,7 +642,6 @@
     const a = $("#infBadge"); const b = $("#conBadge");
     if (a) a.textContent = data.influencers.length;
     if (b) b.textContent = data.contracts.length;
-    renderHistoryBadge();
   }
 
   function initTabs() {
@@ -1300,6 +1292,96 @@
     closeCsvModal();
   }
 
+  function buildHistoryRows(entries) {
+    return entries.map(h => {
+      const d = new Date(h.ts);
+      const date = `${pad(d.getMonth()+1)}-${pad(d.getDate())}-${d.getFullYear()}`;
+      const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      if (h.entity === "influencer") {
+        const r = h.data;
+        return {
+          "Date": date,
+          "Time": time,
+          "Entity": "influencer",
+          "TG Username": r.tg || "",
+          "FB Name": r.fbName || "",
+          "FB Link": r.fbLink || "",
+          "Remarks": r.remarks || "",
+          "Agent Line": "",
+          "Domain": "",
+          "Vlogger TG": "",
+          "Contract": "",
+          "State": "",
+          "My TG": ""
+        };
+      } else {
+        const r = h.data;
+        return {
+          "Date": date,
+          "Time": time,
+          "Entity": "contract",
+          "TG Username": "",
+          "FB Name": "",
+          "FB Link": "",
+          "Remarks": r.remarks || "",
+          "Agent Line": r.agentLine || "",
+          "Domain": r.domain || "",
+          "Vlogger TG": r.vloggerTg || "",
+          "Contract": r.contract || "",
+          "State": r.state || "",
+          "My TG": r.myTg || ""
+        };
+      }
+    });
+  }
+
+  function exportHistoryCsv() {
+    if (!history.length) { toast("No history to export", { icon: "trash" }); return; }
+
+    let entries = history;
+    let filenameDate = todaySlug();
+
+    if (histView === "detail" && histSelectedDay) {
+      entries = history.filter(h => h.dateKey === histSelectedDay);
+      if (!entries.length) { toast("No entries for this day", { icon: "trash" }); return; }
+      const [y, m, d] = histSelectedDay.split("-");
+      filenameDate = `${m}-${d}-${y}`;
+    }
+
+    const rows = buildHistoryRows(entries);
+
+    if (typeof XLSX !== "undefined") {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "History");
+      XLSX.writeFile(wb, `history ${filenameDate}.xlsx`);
+      toast(`history ${filenameDate}.xlsx downloaded`);
+      return;
+    }
+
+    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Remarks,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
+    const lines = rows.map(r => [
+      r["Date"], r["Time"], r["Entity"],
+      `"${String(r["TG Username"]).replace(/"/g,'""')}"`,
+      `"${String(r["FB Name"]).replace(/"/g,'""')}"`,
+      `"${String(r["FB Link"]).replace(/"/g,'""')}"`,
+      `"${String(r["Remarks"]).replace(/"/g,'""')}"`,
+      `"${String(r["Agent Line"]).replace(/"/g,'""')}"`,
+      `"${String(r["Domain"]).replace(/"/g,'""')}"`,
+      `"${String(r["Vlogger TG"]).replace(/"/g,'""')}"`,
+      `"${String(r["Contract"]).replace(/"/g,'""')}"`,
+      `"${String(r["State"]).replace(/"/g,'""')}"`,
+      `"${String(r["My TG"]).replace(/"/g,'""')}"`
+    ].join(","));
+    const csv = header + "\n" + lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `history ${filenameDate}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast(`history ${filenameDate}.csv downloaded`);
+  }
+
   function downloadExcel() {
     if (typeof XLSX === "undefined") { toast("Excel library failed to load", { icon: "trash" }); return; }
     const dateSlug = todaySlug();
@@ -1328,32 +1410,6 @@
       XLSX.writeFile(wb, `contracts ${dateSlug}.xlsx`);
       toast(`contracts ${dateSlug}.xlsx downloaded`);
     }
-  }
-
-  function exportHistoryCsv() {
-    if (!history.length) { toast("No history to export", { icon: "trash" }); return; }
-    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Remarks,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
-    const lines = history.map(h => {
-      const d = new Date(h.ts);
-      const date = `${pad(d.getMonth()+1)}-${pad(d.getDate())}-${d.getFullYear()}`;
-      const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      const clean = (s) => `"${String(s||"").replace(/"/g, '""')}"`;
-      if (h.entity === "influencer") {
-        const r = h.data;
-        return [date, time, "influencer", clean(r.tg), clean(r.fbName), clean(r.fbLink), clean(r.remarks), "", "", "", "", "", ""].join(",");
-      } else {
-        const r = h.data;
-        return [date, time, "contract", "", "", "", "", clean(r.agentLine), clean(r.domain), clean(r.vloggerTg), clean(r.contract), clean(r.state), clean(r.myTg)].join(",");
-      }
-    });
-    const csv = header + "\n" + lines.join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `history ${todaySlug()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    toast("History CSV downloaded");
   }
 
   function exportJson() {
@@ -1410,20 +1466,10 @@
     } catch(e){}
   }
 
-  function autoArchiveInfluencers() {
-    if (!data.influencers.length) return false;
-    const todayK = todayKey();
-    const archived = data.influencers.length;
-    data.influencers = [];
-    try { localStorage.setItem(DAILY_RESET_KEY, todayK); } catch(e){}
-    return { archived, cleared: todayK };
-  }
-
   function checkDailyInfluencerReset() {
     const todayK = todayKey();
     let lastK = null;
     try { lastK = localStorage.getItem(DAILY_RESET_KEY); } catch(e){}
-
     if (lastK === todayK) return;
 
     if (data.influencers.length > 0) {
@@ -1447,7 +1493,6 @@
       const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
       return next - now;
     }
-
     function setNext() {
       const delay = msUntilMidnight();
       setTimeout(() => {
@@ -1456,7 +1501,7 @@
           data.influencers = [];
           save();
           try { localStorage.setItem(DAILY_RESET_KEY, todayKey()); } catch(e){}
-          renderInfluencers();
+          if (activeTab === "influencers") renderInfluencers();
           toast(`New day — archived ${count} influencer${count===1?"":"s"} to History`, {
             icon: "check", duration: 5000
           });
@@ -1518,7 +1563,7 @@
       if (confirm("Clear ALL history? This cannot be undone.")) {
         history = [];
         saveHistory();
-        renderHistory(); renderHistoryBadge();
+        renderHistory();
         toast("History cleared");
       }
     });
@@ -1614,7 +1659,6 @@
 
     renderCounts();
     renderInfluencers();
-    renderHistoryBadge();
     updateLastSaved();
     updateStatus("Influencers");
     checkBackupReminder();
