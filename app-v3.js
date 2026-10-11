@@ -9,6 +9,7 @@
   const HISTORY_KEY = "inf_contract_history";
   const HISTORY_KEY_ALT = "inf_contract_manager_history";
   const BACKUP_TS_KEY = "inf_contract_last_backup_ts";
+  const DAILY_RESET_KEY = "inf_contract_last_inf_reset";
   const HISTORY_LIMIT = 20000;
 
   const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer"];
@@ -70,6 +71,7 @@
     const d = new Date(ts);
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   }
+  function todayKey() { return dayKey(Date.now()); }
   function displayDay(dateKey) {
     const [y, m, d] = dateKey.split("-");
     return `${m}-${d}-${y}`;
@@ -88,7 +90,6 @@
     delete copy._id;
     return copy;
   }
-
   function isEmptyInfluencer(d) {
     if (!d) return true;
     return !((d.tg || "").trim()) && !((d.fbName || "").trim()) && !((d.fbLink || "").trim()) && !((d.remarks || "").trim());
@@ -496,14 +497,13 @@
 
   function migrateRow(row, entity) {
     if (entity === "influencer") {
-      const migrated = {
+      return {
         _id: row._id || uid(),
         tg: row.tg || "",
         fbName: row.fbName || "",
         fbLink: row.fbLink || "",
         remarks: row.remarks || row.notes || ""
       };
-      return migrated;
     } else {
       return {
         _id: row._id || uid(),
@@ -644,6 +644,7 @@
     }
     renderCounts();
   }
+
   function renderCounts() {
     const a = $("#infBadge"); const b = $("#conBadge");
     if (a) a.textContent = data.influencers.length;
@@ -1409,10 +1410,90 @@
     } catch(e){}
   }
 
+  function autoArchiveInfluencers() {
+    if (!data.influencers.length) return false;
+    const todayK = todayKey();
+    const archived = data.influencers.length;
+    data.influencers = [];
+    try { localStorage.setItem(DAILY_RESET_KEY, todayK); } catch(e){}
+    return { archived, cleared: todayK };
+  }
+
+  function checkDailyInfluencerReset() {
+    const todayK = todayKey();
+    let lastK = null;
+    try { lastK = localStorage.getItem(DAILY_RESET_KEY); } catch(e){}
+
+    if (lastK === todayK) return;
+
+    if (data.influencers.length > 0) {
+      const count = data.influencers.length;
+      data.influencers = [];
+      save();
+      try { localStorage.setItem(DAILY_RESET_KEY, todayK); } catch(e){}
+      setTimeout(() => {
+        toast(`Archived ${count} influencer${count===1?"":"s"} from yesterday — History has them`, {
+          icon: "check", duration: 5000
+        });
+      }, 1500);
+    } else {
+      try { localStorage.setItem(DAILY_RESET_KEY, todayK); } catch(e){}
+    }
+  }
+
+  function scheduleMidnightReset() {
+    function msUntilMidnight() {
+      const now = new Date();
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      return next - now;
+    }
+
+    function setNext() {
+      const delay = msUntilMidnight();
+      setTimeout(() => {
+        if (data.influencers.length > 0) {
+          const count = data.influencers.length;
+          data.influencers = [];
+          save();
+          try { localStorage.setItem(DAILY_RESET_KEY, todayKey()); } catch(e){}
+          renderInfluencers();
+          toast(`New day — archived ${count} influencer${count===1?"":"s"} to History`, {
+            icon: "check", duration: 5000
+          });
+        } else {
+          try { localStorage.setItem(DAILY_RESET_KEY, todayKey()); } catch(e){}
+        }
+        setNext();
+      }, delay);
+    }
+    setNext();
+  }
+
+  function scheduleMidnightWarning() {
+    function msUntilWarning() {
+      const now = new Date();
+      const warn = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 55, 0);
+      if (warn <= now) warn.setDate(warn.getDate() + 1);
+      return warn - now;
+    }
+    function setNext() {
+      setTimeout(() => {
+        if (data.influencers.length > 0) {
+          toast("New day in 5 minutes — influencers will be archived to History", {
+            icon: "clock", duration: 6000
+          });
+        }
+        setNext();
+      }, msUntilWarning());
+    }
+    setNext();
+  }
+
   function init() {
     load();
     loadPrefs();
     initTheme();
+    checkDailyInfluencerReset();
     initTabs();
     initSortHeaders();
 
@@ -1537,6 +1618,8 @@
     updateLastSaved();
     updateStatus("Influencers");
     checkBackupReminder();
+    scheduleMidnightReset();
+    scheduleMidnightWarning();
   }
 
   if (document.readyState === "loading") {
