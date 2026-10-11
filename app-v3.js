@@ -24,7 +24,7 @@
   const INF_FIELDS = ["tg", "fbName", "fbLink", "remarks"];
   const INF_DUP_FIELDS = ["tg", "fbName", "fbLink"];
   const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
-  const CON_DUP_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
+  const CON_DUP_FIELDS = [];
 
   let data = { influencers: [], contracts: [] };
   let history = [];
