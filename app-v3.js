@@ -92,6 +92,10 @@
   }
 
   function dupSet(rows, fields) {
+    const out = {};
+    if (!fields.length) {
+      return out;
+    }
     const map = {};
     fields.forEach(f => { map[f] = new Map(); });
     rows.forEach(r => {
@@ -102,7 +106,6 @@
         m.set(v, (m.get(v) || 0) + 1);
       });
     });
-    const out = {};
     fields.forEach(f => {
       out[f] = new Set();
       map[f].forEach((count, key) => {
@@ -311,6 +314,8 @@
     histDetailFilter = "all";
     histView = "detail";
     $$(".hist-tab").forEach(t => t.classList.toggle("active", t.dataset.histTab === "all"));
+    const s = $("#histDetailSearch");
+    if (s) s.value = "";
     renderHistory();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -318,6 +323,8 @@
   function closeDayDetail() {
     histView = "days";
     histSelectedDay = null;
+    const s = $("#histDetailSearch");
+    if (s) s.value = "";
     renderHistory();
   }
 
@@ -333,12 +340,22 @@
     if (!title || !body) return;
 
     const daysMap = getDaysMap();
-    const bucket = daysMap.get(histSelectedDay);
+    let bucket = daysMap.get(histSelectedDay);
     title.textContent = displayDay(histSelectedDay);
 
     if (!bucket) {
       body.innerHTML = `<div class="hist-empty"><h3>No data</h3></div>`;
       return;
+    }
+
+    const dayFilter = ($("#histDetailSearch")?.value || "").toLowerCase();
+    if (dayFilter) {
+      const matchInf = (r) => [r.tg, r.fbName, r.fbLink, r.remarks].join(" ").toLowerCase().includes(dayFilter);
+      const matchCon = (r) => [r.agentLine, r.taskPosted, r.releaseTime, r.contract, r.first, r.second, r.third, r.vloggerTg, r.domain, r.state, r.myTg, r.remarks].join(" ").toLowerCase().includes(dayFilter);
+      bucket = {
+        influencers: bucket.influencers.filter(h => matchInf(h.data)),
+        contracts: bucket.contracts.filter(h => matchCon(h.data))
+      };
     }
 
     body.innerHTML = "";
@@ -442,8 +459,8 @@
       body.innerHTML = `
         <div class="hist-empty">
           ${svgIcon("clock", 48)}
-          <h3>Nothing to show</h3>
-          <p>No ${histDetailFilter === "all" ? "data" : histDetailFilter} on this day.</p>
+          <h3>${dayFilter ? "No matches" : "Nothing to show"}</h3>
+          <p>${dayFilter ? `Nothing found for "${esc(dayFilter)}" on this day.` : `No ${histDetailFilter === "all" ? "data" : histDetailFilter} on this day.`}</p>
         </div>`;
     }
   }
@@ -689,6 +706,8 @@
         else {
           histView = "days";
           histSelectedDay = null;
+          const s = $("#histDetailSearch");
+          if (s) s.value = "";
           renderHistory();
         }
       });
@@ -821,7 +840,7 @@
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
-        if (INF_DUP_FIELDS.includes(k) && dups[k].has(norm(row[k]))) {
+        if (INF_DUP_FIELDS.includes(k) && dups[k] && dups[k].has(norm(row[k]))) {
           td.classList.add("dup");
         }
         td.addEventListener("blur", () => {
@@ -833,7 +852,6 @@
             save(); flashCell(td);
             updateHistorySnapshot("influencer", live);
           }
-          td.innerHTML = escAndHighlight(live[k], filter);
           renderInfluencers();
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
@@ -849,7 +867,7 @@
 
       const card = document.createElement("div");
       card.className = "card";
-      const infDup = (INF_DUP_FIELDS.some(k => dups[k].has(norm(row[k]))));
+      const infDup = INF_DUP_FIELDS.some(k => dups[k] && dups[k].has(norm(row[k])));
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
@@ -921,7 +939,6 @@
     tbody.innerHTML = ""; cards.innerHTML = "";
     let visible = 0;
     const rows = sortedData(data.contracts, conSort);
-    const dups = dupSet(data.contracts, CON_DUP_FIELDS);
 
     rows.forEach((row) => {
       const rowId = row._id;
@@ -935,9 +952,6 @@
         const td = document.createElement("td");
         td.contentEditable = "true"; td.dataset.k = k;
         td.innerHTML = escAndHighlight(row[k], filter);
-        if (CON_DUP_FIELDS.includes(k) && dups[k].has(norm(row[k]))) {
-          td.classList.add("dup");
-        }
         td.addEventListener("blur", () => {
           const newVal = td.innerText.trim();
           const live = data.contracts.find(r => r._id === rowId);
@@ -948,7 +962,6 @@
             updateHistorySnapshot("contract", live);
           }
           td.innerHTML = escAndHighlight(live[k], filter);
-          renderContracts();
         });
         td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
         tr.appendChild(td);
@@ -1018,7 +1031,6 @@
 
       const card = document.createElement("div");
       card.className = "card";
-      const conDup = CON_DUP_FIELDS.some(k => dups[k].has(norm(row[k])));
       const metaRows = [
         ["Vlogger", row.vloggerTg],
         ["Contract", row.contract],
@@ -1029,7 +1041,7 @@
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
-            <div class="card-title">${escAndHighlight(row.domain, filter) || "—"}${conDup ? ' <span class="dup-badge">duplicate</span>' : ''}</div>
+            <div class="card-title">${escAndHighlight(row.domain, filter) || "—"}</div>
             ${row.taskPosted ? `<div class="card-sub">Task: ${escAndHighlight(row.taskPosted, filter)}</div>` : ""}
           </div>
           <div class="card-actions">
@@ -1600,6 +1612,8 @@
     if (histSearch) histSearch.addEventListener("input", () => { histDaysShown = 30; renderHistory(); });
     const histMonthFilter = $("#histMonthFilter");
     if (histMonthFilter) histMonthFilter.addEventListener("change", () => { histDaysShown = 30; renderHistory(); });
+    const histDetailSearch = $("#histDetailSearch");
+    if (histDetailSearch) histDetailSearch.addEventListener("input", () => renderHistoryDetail());
 
     const importInput = $("#importJson");
     if (importInput) importInput.addEventListener("change", (e) => {
