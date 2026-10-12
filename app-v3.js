@@ -34,6 +34,7 @@
   let lastSavedAt = null;
   let activeTab = "influencers";
   let csvImportTarget = null;
+  const pickedHistoryIds = new Set();
 
   let histView = "days";
   let histSelectedDay = null;
@@ -797,6 +798,51 @@
     renderInfluencers();
     logHistory("influencer", row);
     toast("Influencer added");
+  }
+
+  function pickRandomInfluencerFromHistory() {
+    const todayK = todayKey();
+
+    const currentKeys = new Set();
+    data.influencers.forEach(r => {
+      const k = norm(r.tg) || norm(r.fbName) || norm(r.fbLink);
+      if (k) currentKeys.add(k);
+    });
+
+    const pool = history.filter(h => {
+      if (!h || h.entity !== "influencer" || !h.data) return false;
+      if (h.dateKey === todayK) return false;
+      if (pickedHistoryIds.has(h.id)) return false;
+      const r = h.data;
+      const hasData = (r.tg || "").trim() || (r.fbName || "").trim() || (r.fbLink || "").trim();
+      if (!hasData) return false;
+      const k = norm(r.tg) || norm(r.fbName) || norm(r.fbLink);
+      if (!k) return false;
+      if (currentKeys.has(k)) return false;
+      return true;
+    });
+
+    if (!pool.length) {
+      toast("No more unique history to add", { icon: "trash" });
+      return;
+    }
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const src = pick.data;
+    const newRow = {
+      _id: uid(),
+      tg: src.tg || "",
+      fbName: src.fbName || "",
+      fbLink: src.fbLink || "",
+      remarks: ""
+    };
+
+    data.influencers.push(newRow);
+    pickedHistoryIds.add(pick.id);
+    save();
+    renderInfluencers();
+    logHistory("influencer", newRow);
+    toast(`Added ${newRow.tg || newRow.fbName || "influencer"} from history`);
   }
 
   function delInfluencerById(id) {
@@ -1580,6 +1626,7 @@
 
     const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
     bind("addInfBtn", addInfluencer);
+    bind("pickRandomInfBtn", pickRandomInfluencerFromHistory);
     bind("addConBtn", addContract);
     bind("downloadExcel", downloadExcel);
     bind("exportJson", exportJson);
