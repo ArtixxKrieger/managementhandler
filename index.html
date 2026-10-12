@@ -87,7 +87,7 @@
     <span>Contracts</span>
     <span class="badge" id="conBadge">0</span>
   </button>
-    <button class="tab" data-tab="history">
+  <button class="tab" data-tab="history">
     <svg class="icon-svg"><use href="#i-clock"/></svg>
     <span>History</span>
   </button>
@@ -225,7 +225,7 @@
         </select>
         <button id="exportHistCsv" class="btn ghost">
           <svg class="icon-svg"><use href="#i-download"/></svg>
-          <span>Export CSV</span>
+          <span>Export Excel</span>
         </button>
         <button id="clearHist" class="btn ghost">
           <svg class="icon-svg"><use href="#i-trash"/></svg>
@@ -248,6 +248,10 @@
           <span>Back</span>
         </button>
         <h2 class="hist-detail-title" id="histDetailTitle">Day</h2>
+        <div class="search-wrap">
+          <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+          <input type="search" id="histDetailSearch" class="search" placeholder="Search this day…">
+        </div>
       </div>
       <div class="hist-detail-tabs">
         <button class="hist-tab active" data-hist-tab="all">All</button>
