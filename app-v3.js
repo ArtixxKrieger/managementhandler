@@ -1527,7 +1527,12 @@
   function downloadExcel() {
     if (typeof XLSX === "undefined") { toast("Excel library failed to load", { icon: "trash" }); return; }
     const dateSlug = todaySlug();
-    if (activeTab === "history") { exportHistoryCsv(); return; }
+    
+    if (activeTab === "history") { 
+      exportHistoryCsv(); 
+      return; 
+    }
+    
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       const rows = data.influencers.map(r => ({
@@ -1545,6 +1550,7 @@
       toast(`influencers ${dateSlug}.xlsx downloaded`);
     } else {
       if (!data.contracts.length) { toast("No contracts to export", { icon: "trash" }); return; }
+      
       const rows = data.contracts.map(r => ({
         "代理线": r.agentLine, "发布任务": r.taskPosted,
         "发布时间": r.releaseTime, "时间": r.time,
@@ -1553,8 +1559,29 @@
         "博主电报": r.vloggerTg, "推广域名": r.domain,
         "状态": r.state, "我的电报": r.myTg, "备注": r.remarks
       }));
+      
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Contracts");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      
+      // Inject styles for Account banned / Scammer
+      if (data.contracts.length > 0) {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let r = 1; r <= range.e.r; r++) {
+          const rowData = data.contracts[r - 1];
+          if (rowData && (rowData.state === "Account banned" || rowData.state === "Scammer")) {
+            for (let c = range.s.c; c <= range.e.c; c++) {
+              const cellRef = XLSX.utils.encode_cell({ r, c });
+              if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
+              ws[cellRef].s = { 
+                font: { color: { rgb: "FFFF0000" } }, // Red text
+                fill: { patternType: "solid", fgColor: { rgb: "FFFFEBEB" } } // Light red background
+              };
+            }
+          }
+        }
+      }
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Contracts");
       XLSX.writeFile(wb, `contracts ${dateSlug}.xlsx`);
       toast(`contracts ${dateSlug}.xlsx downloaded`);
     }
