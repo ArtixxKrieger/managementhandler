@@ -995,13 +995,15 @@
       agentLine: "", taskPosted: "", releaseTime: "", time: "",
       contract: "", first: "", second: "", third: "",
       vloggerTg: "", domain: "", state: "Pending",
-      myTg: prefs.lastMyTg || "", remarks: ""
+      myTg: "", // <--- Removed prefs.lastMyTg from here
+      remarks: ""
     };
     data.contracts.push(row);
     save(); renderContracts();
     logHistory("contract", row);
     toast("Contract added");
   }
+  
   function delContractById(id) {
     const idx = data.contracts.findIndex(r => r._id === id);
     if (idx === -1) return;
@@ -1078,7 +1080,7 @@
         if (!live) return;
         if (live.myTg !== newVal) {
           live.myTg = newVal;
-          if (newVal) { prefs.lastMyTg = newVal; savePrefs(); }
+          if (newVal) { prefs.lastMyTg = newVal; savePrefs(); } // still saves pref for next time if you want
           save(); flashCell(myTgTd);
           updateHistorySnapshot("contract", live);
         }
