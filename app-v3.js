@@ -95,9 +95,7 @@
 
   function dupSet(rows, fields) {
     const out = {};
-    if (!fields.length) {
-      return out;
-    }
+    if (!fields.length) return out;
     const map = {};
     fields.forEach(f => { map[f] = new Map(); });
     rows.forEach(r => {
@@ -1535,52 +1533,79 @@
     
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
-      const rows = data.influencers.map(r => ({
-        "FB名字": r.fbName, 
-        "FB链接": r.fbLink, 
-        "飞机": r.telegram, 
-        "offer/status": r.offerStatus,
-        "手机号": r.phone,
-        "date": r.date,
-        "Account name": r.accountName
-      }));
+      
+      const cols = ["FB名字", "FB链接", "飞机", "offer/status", "手机号", "date", "Account name"];
+      const keys = ["fbName", "fbLink", "telegram", "offerStatus", "phone", "date", "accountName"];
+      
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Influencers");
+      const ws = XLSX.utils.aoa_to_sheet([cols]);
+      
+      // Calculate column widths based on content
+      const colWidths = cols.map(c => c.length + 4);
+      
+      data.influencers.forEach((r, i) => {
+        const rowData = keys.map((k, cIdx) => {
+          const val = String(r[k] || "");
+          if (val.length + 4 > colWidths[cIdx]) colWidths[cIdx] = val.length + 4;
+          return val;
+        });
+        XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: -1 });
+      });
+      
+      ws['!cols'] = colWidths.map(w => ({ wch: w }));
+      ws['!rows'] = [{ hpt: 24 }].concat(data.influencers.map(() => ({ hpt: 20 })));
+
+      XLSX.utils.book_append_sheet(wb, ws, "Influencers");
       XLSX.writeFile(wb, `influencers ${dateSlug}.xlsx`);
       toast(`influencers ${dateSlug}.xlsx downloaded`);
     } else {
       if (!data.contracts.length) { toast("No contracts to export", { icon: "trash" }); return; }
       
-      const rows = data.contracts.map(r => ({
-        "代理线": r.agentLine, "发布任务": r.taskPosted,
-        "发布时间": r.releaseTime, "时间": r.time,
-        "合同": r.contract, "第一笔": r.first,
-        "第二笔": r.second, "第三笔": r.third,
-        "博主电报": r.vloggerTg, "推广域名": r.domain,
-        "状态": r.state, "我的电报": r.myTg, "备注": r.remarks
-      }));
+      const cols = ["代理线", "发布任务", "发布时间", "时间", "合同", "第一笔", "第二笔", "第三笔", "博主电报", "推广域名", "状态", "我的电报", "备注"];
+      const keys = ["agentLine", "taskPosted", "releaseTime", "time", "contract", "first", "second", "third", "vloggerTg", "domain", "state", "myTg", "remarks"];
       
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(rows);
+      const ws = XLSX.utils.aoa_to_sheet([cols]);
+      const colWidths = cols.map(c => c.length + 4);
       
-      // Inject styles for Account banned / Scammer
-      if (data.contracts.length > 0) {
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        for (let r = 1; r <= range.e.r; r++) {
-          const rowData = data.contracts[r - 1];
-          if (rowData && (rowData.state === "Account banned" || rowData.state === "Scammer")) {
-            for (let c = range.s.c; c <= range.e.c; c++) {
-              const cellRef = XLSX.utils.encode_cell({ r, c });
-              if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
-              ws[cellRef].s = { 
-                font: { color: { rgb: "FFFF0000" } }, // Red text
-                fill: { patternType: "solid", fgColor: { rgb: "FFFFEBEB" } } // Light red background
-              };
-            }
+      data.contracts.forEach(r => {
+        const rowData = keys.map((k, cIdx) => {
+          const val = String(r[k] || "");
+          if (val.length + 4 > colWidths[cIdx]) colWidths[cIdx] = val.length + 4;
+          return val;
+        });
+        XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: -1 });
+      });
+      
+      // Apply styling (color, fit to text)
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = 1; r <= range.e.r; r++) {
+        const rowData = data.contracts[r - 1];
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const cellRef = XLSX.utils.encode_cell({ r, c });
+          if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
+          
+          // Base alignment to center vertically and wrap text
+          ws[cellRef].s = { 
+            alignment: { vertical: "center", wrapText: true } 
+          };
+          
+          if (rowData && rowData.state === "Account banned") {
+             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; // Red background
+             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
+          } else if (rowData && rowData.state === "Scammer") {
+             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; // Red background
+             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
+          } else if (rowData && rowData.state === "Done") {
+             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FF00B050" } }; // Green background
+             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
           }
         }
       }
       
+      ws['!cols'] = colWidths.map(w => ({ wch: w }));
+      ws['!rows'] = [{ hpt: 24 }].concat(data.contracts.map(() => ({ hpt: 20 })));
+
       XLSX.utils.book_append_sheet(wb, ws, "Contracts");
       XLSX.writeFile(wb, `contracts ${dateSlug}.xlsx`);
       toast(`contracts ${dateSlug}.xlsx downloaded`);
