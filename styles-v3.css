@@ -2,10 +2,10 @@
    THEME TOKENS
    ============================================================ */
 :root {
-  --bg: #f7f8fa;
-  --bg-elevated: rgba(255, 255, 255, 0.85);
+  --bg: #f5f6f8;
+  --bg-elevated: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
+  --surface-2: #f1f3f7;
   --surface-hover: #f8fafc;
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
@@ -14,7 +14,7 @@
   --text-faint: #94a3b8;
   --primary: #4f46e5;
   --primary-hover: #4338ca;
-  --primary-soft: #e0e7ff;
+  --primary-soft: #eef2ff;
   --success: #10b981;
   --success-soft: #d1fae5;
   --danger: #ef4444;
@@ -320,7 +320,7 @@ thead th {
   top: 0;
   z-index: 2;
   border-bottom: 1px solid var(--border);
-  border-top: 1px solid var(--border); /* Inner shadow effect */
+  border-top: 1px solid var(--border);
 }
 .col-action { width: 56px; padding-right: 16px; }
 
