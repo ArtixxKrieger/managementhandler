@@ -24,7 +24,7 @@
   const INF_FIELDS = ["fbName", "fbLink", "telegram", "offerStatus", "phone", "date", "accountName"];
   const INF_DUP_FIELDS = ["fbLink", "telegram", "fbName"];
   
-  const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
+  const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "time", "contract", "first", "second", "third", "vloggerTg", "domain"];
   const CON_DUP_FIELDS = [];
 
   let data = { influencers: [], contracts: [] };
@@ -361,7 +361,7 @@
     const dayFilter = ($("#histDetailSearch")?.value || "").toLowerCase();
     if (dayFilter) {
       const matchInf = (r) => [r.fbName, r.fbLink, r.telegram, r.offerStatus, r.phone, r.date, r.accountName].join(" ").toLowerCase().includes(dayFilter);
-      const matchCon = (r) => [r.agentLine, r.taskPosted, r.releaseTime, r.contract, r.first, r.second, r.third, r.vloggerTg, r.domain, r.state, r.myTg, r.remarks].join(" ").toLowerCase().includes(dayFilter);
+      const matchCon = (r) => [r.agentLine, r.taskPosted, r.releaseTime, r.time, r.contract, r.first, r.second, r.third, r.vloggerTg, r.domain, r.state, r.myTg, r.remarks].join(" ").toLowerCase().includes(dayFilter);
       bucket = {
         influencers: bucket.influencers.filter(h => matchInf(h.data)),
         contracts: bucket.contracts.filter(h => matchCon(h.data))
@@ -427,18 +427,19 @@
             <table class="hist-table">
               <thead>
                 <tr>
-                  <th>Agent Line</th>
-                  <th>Task Posted</th>
-                  <th>Release Time</th>
-                  <th>Contract</th>
-                  <th>1st</th>
-                  <th>2nd</th>
-                  <th>3rd</th>
-                  <th>Vlogger TG</th>
-                  <th>Domain</th>
-                  <th>State</th>
-                  <th>My TG</th>
-                  <th>Remarks</th>
+                  <th>代理线</th>
+                  <th>发布任务</th>
+                  <th>发布时间</th>
+                  <th>时间</th>
+                  <th>合同</th>
+                  <th>第一笔</th>
+                  <th>第二笔</th>
+                  <th>第三笔</th>
+                  <th>博主电报</th>
+                  <th>推广域名</th>
+                  <th>状态</th>
+                  <th>我的电报</th>
+                  <th>备注</th>
                   <th>Time</th>
                 </tr>
               </thead>
@@ -455,6 +456,7 @@
           <td>${esc(r.agentLine) || "—"}</td>
           <td>${esc(r.taskPosted) || "—"}</td>
           <td>${esc(r.releaseTime) || "—"}</td>
+          <td>${esc(r.time) || "—"}</td>
           <td>${esc(r.contract) || "—"}</td>
           <td>${esc(r.first) || "—"}</td>
           <td>${esc(r.second) || "—"}</td>
@@ -566,6 +568,7 @@
         agentLine: row.agentLine || "",
         taskPosted: row.taskPosted || "",
         releaseTime: row.releaseTime || "",
+        time: row.time || row.updateTime || "", // fallback to old updateTime
         contract: row.contract || "",
         first: row.first || "",
         second: row.second || "",
@@ -643,6 +646,7 @@
             agentLine: h.data.agentLine || "",
             taskPosted: h.data.taskPosted || "",
             releaseTime: h.data.releaseTime || "",
+            time: h.data.time || h.data.updateTime || "",
             contract: h.data.contract || "",
             first: h.data.first || "",
             second: h.data.second || "",
@@ -988,7 +992,7 @@
   function addContract() {
     const row = {
       _id: uid(),
-      agentLine: "", taskPosted: "", releaseTime: "",
+      agentLine: "", taskPosted: "", releaseTime: "", time: "",
       contract: "", first: "", second: "", third: "",
       vloggerTg: "", domain: "", state: "Pending",
       myTg: prefs.lastMyTg || "", remarks: ""
@@ -1244,18 +1248,19 @@
     const row = data.contracts.find(r => r._id === id);
     if (!row) return;
     openModal("Edit Contract", [
-      { key: "agentLine",   label: "Agent Line",         value: row.agentLine },
-      { key: "taskPosted",  label: "Task Posted",        value: row.taskPosted },
-      { key: "releaseTime", label: "Release Time",       value: row.releaseTime },
-      { key: "contract",    label: "Contract",           value: row.contract },
-      { key: "first",       label: "First Transaction",  value: row.first },
-      { key: "second",      label: "Second Payment",     value: row.second },
-      { key: "third",       label: "Third Payment",      value: row.third },
-      { key: "vloggerTg",   label: "Vlogger's Telegram", value: row.vloggerTg },
-      { key: "domain",      label: "Promotional Domain", value: row.domain },
-      { key: "state",       label: "State", type: "select", options: STATES, value: row.state },
-      { key: "myTg",        label: "My Telegram Name",   value: row.myTg },
-      { key: "remarks",     label: "Remarks",            value: row.remarks }
+      { key: "agentLine",   label: "代理线",       value: row.agentLine },
+      { key: "taskPosted",  label: "发布任务",     value: row.taskPosted },
+      { key: "releaseTime", label: "发布时间",     value: row.releaseTime },
+      { key: "time",        label: "时间",         value: row.time },
+      { key: "contract",    label: "合同",         value: row.contract },
+      { key: "first",       label: "第一笔",       value: row.first },
+      { key: "second",      label: "第二笔",       value: row.second },
+      { key: "third",       label: "第三笔",       value: row.third },
+      { key: "vloggerTg",   label: "博主电报",     value: row.vloggerTg },
+      { key: "domain",      label: "推广域名",     value: row.domain },
+      { key: "state",       label: "状态", type: "select", options: STATES, value: row.state },
+      { key: "myTg",        label: "我的电报",     value: row.myTg },
+      { key: "remarks",     label: "备注",         value: row.remarks }
     ], (v) => {
       Object.assign(row, v);
       if (v.myTg) { prefs.lastMyTg = v.myTg; savePrefs(); }
@@ -1295,18 +1300,19 @@
   };
 
   const CON_COL_MAP = {
-    "agent line": "agentLine", "agent": "agentLine", "agentline": "agentLine",
-    "task posted": "taskPosted", "task": "taskPosted", "taskposted": "taskPosted",
-    "release time": "releaseTime", "release": "releaseTime", "releasetime": "releaseTime",
-    "contract": "contract",
-    "first transaction": "first", "1st trans.": "first", "1st": "first", "first": "first",
-    "second payment": "second", "2nd pay": "second", "2nd": "second", "second": "second",
-    "third payment": "third", "3rd pay": "third", "3rd": "third", "third": "third",
-    "vlogger's telegram": "vloggerTg", "vlogger tg": "vloggerTg", "vlogger": "vloggerTg", "vloggertg": "vloggerTg",
-    "promotional domain": "domain", "domain": "domain",
-    "state": "state", "status": "state",
-    "my telegram name": "myTg", "my tg": "myTg", "mytelegram": "myTg", "my telegram": "myTg",
-    "remarks": "remarks", "notes": "remarks", "note": "remarks", "remark": "remarks"
+    "代理线": "agentLine", "agent line": "agentLine", "agent": "agentLine", "agentline": "agentLine",
+    "发布任务": "taskPosted", "task posted": "taskPosted", "task": "taskPosted", "taskposted": "taskPosted",
+    "发布时间": "releaseTime", "release time": "releaseTime", "release": "releaseTime", "releasetime": "releaseTime",
+    "时间": "time", "update time": "time", "updatetime": "time",
+    "合同": "contract", "contract": "contract",
+    "第一笔": "first", "first transaction": "first", "1st trans.": "first", "1st": "first", "first": "first",
+    "第二笔": "second", "second payment": "second", "2nd pay": "second", "2nd": "second", "second": "second",
+    "第三笔": "third", "third payment": "third", "3rd pay": "third", "3rd": "third", "third": "third",
+    "博主电报": "vloggerTg", "vlogger's telegram": "vloggerTg", "vlogger tg": "vloggerTg", "vlogger": "vloggerTg", "vloggertg": "vloggerTg",
+    "推广域名": "domain", "promotional domain": "domain", "domain": "domain",
+    "状态": "state", "state": "state", "status": "state",
+    "我的电报": "myTg", "my telegram name": "myTg", "my tg": "myTg", "mytelegram": "myTg", "my telegram": "myTg",
+    "备注": "remarks", "remarks": "remarks", "notes": "remarks", "note": "remarks", "remark": "remarks"
   };
 
   function normalizeHeader(h) {
@@ -1334,7 +1340,7 @@
       bodyRows.forEach(r => {
         const obj = {
           _id: uid(),
-          agentLine: "", taskPosted: "", releaseTime: "",
+          agentLine: "", taskPosted: "", releaseTime: "", time: "",
           contract: "", first: "", second: "", third: "",
           vloggerTg: "", domain: "", state: "Pending", myTg: "", remarks: ""
         };
@@ -1441,16 +1447,19 @@
           "飞机": r.telegram || "", "offer/status": r.offerStatus || "",
           "手机号": r.phone || "", "date": r.date || "",
           "Account name": r.accountName || "",
-          "Agent Line": "", "Domain": "", "Vlogger TG": "", "Contract": "", "State": "", "My TG": "", "Remarks": ""
+          "代理线": "", "发布任务": "", "发布时间": "", "时间": "", "合同": "", "第一笔": "", "第二笔": "", "第三笔": "", "博主电报": "", "推广域名": "", "状态": "", "我的电报": "", "备注": ""
         };
       } else {
         const r = h.data;
         return {
           "Date": date, "Time": time, "Entity": "contract",
           "FB名字": "", "FB链接": "", "飞机": "", "offer/status": "", "手机号": "", "date": "", "Account name": "",
-          "Agent Line": r.agentLine || "", "Domain": r.domain || "",
-          "Vlogger TG": r.vloggerTg || "", "Contract": r.contract || "",
-          "State": r.state || "", "My TG": r.myTg || "", "Remarks": r.remarks || ""
+          "代理线": r.agentLine || "", "发布任务": r.taskPosted || "",
+          "发布时间": r.releaseTime || "", "时间": r.time || "",
+          "合同": r.contract || "", "第一笔": r.first || "",
+          "第二笔": r.second || "", "第三笔": r.third || "",
+          "博主电报": r.vloggerTg || "", "推广域名": r.domain || "",
+          "状态": r.state || "", "我的电报": r.myTg || "", "备注": r.remarks || ""
         };
       }
     });
@@ -1479,7 +1488,7 @@
       return;
     }
 
-    const header = "Date,Time,Entity,FB名字,FB链接,飞机,offer/status,手机号,date,Account name,Agent Line,Domain,Vlogger TG,Contract,State,My TG,Remarks";
+    const header = "Date,Time,Entity,FB名字,FB链接,飞机,offer/status,手机号,date,Account name,代理线,发布任务,发布时间,时间,合同,第一笔,第二笔,第三笔,博主电报,推广域名,状态,我的电报,备注";
     const lines = rows.map(r => [
       r["Date"], r["Time"], r["Entity"],
       `"${String(r["FB名字"]).replace(/"/g,'""')}"`,
@@ -1489,13 +1498,19 @@
       `"${String(r["手机号"]).replace(/"/g,'""')}"`,
       `"${String(r["date"]).replace(/"/g,'""')}"`,
       `"${String(r["Account name"]).replace(/"/g,'""')}"`,
-      `"${String(r["Agent Line"]).replace(/"/g,'""')}"`,
-      `"${String(r["Domain"]).replace(/"/g,'""')}"`,
-      `"${String(r["Vlogger TG"]).replace(/"/g,'""')}"`,
-      `"${String(r["Contract"]).replace(/"/g,'""')}"`,
-      `"${String(r["State"]).replace(/"/g,'""')}"`,
-      `"${String(r["My TG"]).replace(/"/g,'""')}"`,
-      `"${String(r["Remarks"]).replace(/"/g,'""')}"`
+      `"${String(r["代理线"]).replace(/"/g,'""')}"`,
+      `"${String(r["发布任务"]).replace(/"/g,'""')}"`,
+      `"${String(r["发布时间"]).replace(/"/g,'""')}"`,
+      `"${String(r["时间"]).replace(/"/g,'""')}"`,
+      `"${String(r["合同"]).replace(/"/g,'""')}"`,
+      `"${String(r["第一笔"]).replace(/"/g,'""')}"`,
+      `"${String(r["第二笔"]).replace(/"/g,'""')}"`,
+      `"${String(r["第三笔"]).replace(/"/g,'""')}"`,
+      `"${String(r["博主电报"]).replace(/"/g,'""')}"`,
+      `"${String(r["推广域名"]).replace(/"/g,'""')}"`,
+      `"${String(r["状态"]).replace(/"/g,'""')}"`,
+      `"${String(r["我的电报"]).replace(/"/g,'""')}"`,
+      `"${String(r["备注"]).replace(/"/g,'""')}"`
     ].join(","));
     const csv = header + "\n" + lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1529,12 +1544,12 @@
     } else {
       if (!data.contracts.length) { toast("No contracts to export", { icon: "trash" }); return; }
       const rows = data.contracts.map(r => ({
-        "Agent Line": r.agentLine, "Task Posted": r.taskPosted,
-        "Release Time": r.releaseTime,
-        "Contract": r.contract, "First Transaction": r.first,
-        "Second Payment": r.second, "Third Payment": r.third,
-        "Vlogger's Telegram": r.vloggerTg, "Promotional Domain": r.domain,
-        "State": r.state, "My Telegram Name": r.myTg, "Remarks": r.remarks
+        "代理线": r.agentLine, "发布任务": r.taskPosted,
+        "发布时间": r.releaseTime, "时间": r.time,
+        "合同": r.contract, "第一笔": r.first,
+        "第二笔": r.second, "第三笔": r.third,
+        "博主电报": r.vloggerTg, "推广域名": r.domain,
+        "状态": r.state, "我的电报": r.myTg, "备注": r.remarks
       }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Contracts");
