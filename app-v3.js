@@ -21,8 +21,9 @@
     "Scammer": "state-scammer"
   };
 
-  const INF_FIELDS = ["tg", "fbName", "fbLink", "remarks"];
-  const INF_DUP_FIELDS = ["tg", "fbName", "fbLink"];
+  const INF_FIELDS = ["fbName", "fbLink", "telegram", "offerStatus", "phone", "date", "accountName"];
+  const INF_DUP_FIELDS = ["fbLink", "telegram", "fbName"];
+  
   const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "contract", "first", "second", "third", "vloggerTg", "domain"];
   const CON_DUP_FIELDS = [];
 
@@ -121,10 +122,18 @@
     delete copy._id;
     return copy;
   }
+  
   function isEmptyInfluencer(d) {
     if (!d) return true;
-    return !((d.tg || "").trim()) && !((d.fbName || "").trim()) && !((d.fbLink || "").trim()) && !((d.remarks || "").trim());
+    return !((d.fbName || "").trim()) && 
+           !((d.fbLink || "").trim()) && 
+           !((d.telegram || "").trim()) && 
+           !((d.offerStatus || "").trim()) &&
+           !((d.phone || "").trim()) &&
+           !((d.date || "").trim()) &&
+           !((d.accountName || "").trim());
   }
+
   function isEmptyContract(d) {
     if (!d) return true;
     return !((d.agentLine || "").trim()) && !((d.domain || "").trim()) && !((d.vloggerTg || "").trim()) && !((d.myTg || "").trim()) && !((d.contract || "").trim()) && !((d.remarks || "").trim());
@@ -236,7 +245,7 @@
         return all.some(h => {
           const d = h.data;
           const hay = h.entity === "influencer"
-            ? [d.tg, d.fbName, d.fbLink, d.remarks].join(" ").toLowerCase()
+            ? [d.fbName, d.fbLink, d.telegram, d.offerStatus, d.phone, d.date, d.accountName].join(" ").toLowerCase()
             : [d.agentLine, d.domain, d.vloggerTg, d.myTg, d.contract, d.state, d.remarks].join(" ").toLowerCase();
           return hay.includes(searchFilter);
         });
@@ -351,7 +360,7 @@
 
     const dayFilter = ($("#histDetailSearch")?.value || "").toLowerCase();
     if (dayFilter) {
-      const matchInf = (r) => [r.tg, r.fbName, r.fbLink, r.remarks].join(" ").toLowerCase().includes(dayFilter);
+      const matchInf = (r) => [r.fbName, r.fbLink, r.telegram, r.offerStatus, r.phone, r.date, r.accountName].join(" ").toLowerCase().includes(dayFilter);
       const matchCon = (r) => [r.agentLine, r.taskPosted, r.releaseTime, r.contract, r.first, r.second, r.third, r.vloggerTg, r.domain, r.state, r.myTg, r.remarks].join(" ").toLowerCase().includes(dayFilter);
       bucket = {
         influencers: bucket.influencers.filter(h => matchInf(h.data)),
@@ -374,10 +383,13 @@
             <table class="hist-table">
               <thead>
                 <tr>
-                  <th>TG Username</th>
-                  <th>FB Name</th>
-                  <th>FB Link</th>
-                  <th>Remarks</th>
+                  <th>FB名字</th>
+                  <th>FB链接</th>
+                  <th>飞机</th>
+                  <th>offer/status</th>
+                  <th>手机号</th>
+                  <th>date</th>
+                  <th>Account name</th>
                   <th>Time</th>
                 </tr>
               </thead>
@@ -391,10 +403,13 @@
         const r = h.data;
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${esc(r.tg) || "—"}</td>
           <td>${esc(r.fbName) || "—"}</td>
           <td>${r.fbLink ? `<a href="${esc(r.fbLink)}" target="_blank" rel="noopener" class="hist-link">${esc(r.fbLink)}</a>` : "—"}</td>
-          <td>${esc(r.remarks) || "—"}</td>
+          <td>${esc(r.telegram) || "—"}</td>
+          <td>${esc(r.offerStatus) || "—"}</td>
+          <td>${esc(r.phone) || "—"}</td>
+          <td>${esc(r.date) || "—"}</td>
+          <td>${esc(r.accountName) || "—"}</td>
           <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
         tbody.appendChild(tr);
@@ -537,10 +552,13 @@
     if (entity === "influencer") {
       return {
         _id: row._id || uid(),
-        tg: row.tg || "",
-        fbName: row.fbName || "",
+        fbName: row.fbName || row.notes || "",
         fbLink: row.fbLink || "",
-        remarks: row.remarks || row.notes || ""
+        telegram: row.telegram || row.tg || "",
+        offerStatus: row.offerStatus || "",
+        phone: row.phone || "",
+        date: row.date || "",
+        accountName: row.accountName || ""
       };
     } else {
       return {
@@ -612,10 +630,13 @@
       history = historyRaw.filter(h => h && h.entity && h.data).map(h => {
         if (h.entity === "influencer") {
           h.data = {
-            tg: h.data.tg || "",
-            fbName: h.data.fbName || "",
+            fbName: h.data.fbName || h.data.notes || "",
             fbLink: h.data.fbLink || "",
-            remarks: h.data.remarks || h.data.notes || ""
+            telegram: h.data.telegram || h.data.tg || "",
+            offerStatus: h.data.offerStatus || "",
+            phone: h.data.phone || "",
+            date: h.data.date || "",
+            accountName: h.data.accountName || ""
           };
         } else {
           h.data = {
@@ -637,7 +658,7 @@
         let match = null;
         if (h.entity === "influencer") {
           match = data.influencers.find(r =>
-            (r.tg && r.tg === h.data.tg) ||
+            (r.telegram && r.telegram === h.data.telegram) ||
             (r.fbName && r.fbName === h.data.fbName)
           );
         } else {
@@ -792,7 +813,16 @@
   }
 
   function addInfluencer() {
-    const row = { _id: uid(), tg: "", fbName: "", fbLink: "", remarks: "" };
+    const row = { 
+      _id: uid(), 
+      fbName: "", 
+      fbLink: "", 
+      telegram: "", 
+      offerStatus: "", 
+      phone: "", 
+      date: todaySlug(), 
+      accountName: "" 
+    };
     data.influencers.push(row);
     save();
     renderInfluencers();
@@ -805,7 +835,7 @@
 
     const currentKeys = new Set();
     data.influencers.forEach(r => {
-      const k = norm(r.tg) || norm(r.fbName) || norm(r.fbLink);
+      const k = norm(r.telegram) || norm(r.fbName) || norm(r.fbLink);
       if (k) currentKeys.add(k);
     });
 
@@ -814,9 +844,9 @@
       if (h.dateKey === todayK) return false;
       if (pickedHistoryIds.has(h.id)) return false;
       const r = h.data;
-      const hasData = (r.tg || "").trim() || (r.fbName || "").trim() || (r.fbLink || "").trim();
+      const hasData = (r.fbName || "").trim() || (r.telegram || "").trim() || (r.fbLink || "").trim();
       if (!hasData) return false;
-      const k = norm(r.tg) || norm(r.fbName) || norm(r.fbLink);
+      const k = norm(r.telegram) || norm(r.fbName) || norm(r.fbLink);
       if (!k) return false;
       if (currentKeys.has(k)) return false;
       return true;
@@ -831,10 +861,13 @@
     const src = pick.data;
     const newRow = {
       _id: uid(),
-      tg: src.tg || "",
       fbName: src.fbName || "",
       fbLink: src.fbLink || "",
-      remarks: ""
+      telegram: src.telegram || "",
+      offerStatus: "",
+      phone: "",
+      date: todaySlug(),
+      accountName: ""
     };
 
     data.influencers.push(newRow);
@@ -842,7 +875,7 @@
     save();
     renderInfluencers();
     logHistory("influencer", newRow);
-    toast(`Added ${newRow.tg || newRow.fbName || "influencer"} from history`);
+    toast(`Added ${newRow.telegram || newRow.fbName || "influencer"} from history`);
   }
 
   function delInfluencerById(id) {
@@ -877,7 +910,7 @@
 
     rows.forEach((row) => {
       const rowId = row._id;
-      const hay = [row.tg, row.fbName, row.fbLink, row.remarks].map(v => (v || "").toLowerCase()).join(" ");
+      const hay = [row.fbName, row.fbLink, row.telegram, row.offerStatus, row.phone, row.date, row.accountName].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
 
@@ -917,7 +950,7 @@
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
-            <div class="card-title">${escAndHighlight(row.tg, filter) || "—"}${infDup ? ' <span class="dup-badge">duplicate</span>' : ''}</div>
+            <div class="card-title">${escAndHighlight(row.telegram, filter) || "—"}${infDup ? ' <span class="dup-badge">duplicate</span>' : ''}</div>
             <div class="card-sub">${escAndHighlight(row.fbName, filter) || "No FB name"}</div>
           </div>
           <div class="card-actions">
@@ -1194,10 +1227,13 @@
     const row = data.influencers.find(r => r._id === id);
     if (!row) return;
     openModal("Edit Influencer", [
-      { key: "tg",      label: "TG Username", value: row.tg },
-      { key: "fbName",  label: "FB Name",     value: row.fbName },
-      { key: "fbLink",  label: "FB Link",     value: row.fbLink },
-      { key: "remarks", label: "Remarks",     value: row.remarks }
+      { key: "fbName",      label: "FB名字",       value: row.fbName },
+      { key: "fbLink",      label: "FB链接",       value: row.fbLink },
+      { key: "telegram",    label: "飞机",         value: row.telegram },
+      { key: "offerStatus", label: "offer/status", value: row.offerStatus },
+      { key: "phone",       label: "手机号",       value: row.phone },
+      { key: "date",        label: "date",         value: row.date },
+      { key: "accountName", label: "Account name", value: row.accountName }
     ], (v) => {
       Object.assign(row, v);
       save(); renderInfluencers();
@@ -1249,10 +1285,13 @@
   }
 
   const INF_COL_MAP = {
-    "tg username": "tg", "tg": "tg", "telegram": "tg", "telegram username": "tg",
-    "fb name": "fbName", "fb": "fbName", "facebook name": "fbName", "name": "fbName",
-    "fb link": "fbLink", "link": "fbLink", "facebook link": "fbLink", "profile link": "fbLink",
-    "remarks": "remarks", "notes": "remarks", "note": "remarks", "remark": "remarks"
+    "fb名字": "fbName", "fb name": "fbName", "name": "fbName", "fb": "fbName", "facebook name": "fbName",
+    "fb链接": "fbLink", "fb link": "fbLink", "link": "fbLink", "facebook link": "fbLink", "profile link": "fbLink",
+    "飞机": "telegram", "telegram": "telegram", "tg": "telegram", "tg username": "telegram",
+    "offer/status": "offerStatus", "offer": "offerStatus", "status": "offerStatus",
+    "手机号": "phone", "phone": "phone", "phone number": "phone", "number": "phone",
+    "date": "date",
+    "account name": "accountName", "account": "accountName"
   };
 
   const CON_COL_MAP = {
@@ -1280,12 +1319,12 @@
 
     if (target === "influencers") {
       bodyRows.forEach(r => {
-        const obj = { _id: uid(), tg: "", fbName: "", fbLink: "", remarks: "" };
+        const obj = { _id: uid(), fbName: "", fbLink: "", telegram: "", offerStatus: "", phone: "", date: todaySlug(), accountName: "" };
         headers.forEach((h, idx) => {
           const key = map[normalizeHeader(h)];
           if (key) obj[key] = String(r[idx] == null ? "" : r[idx]).trim();
         });
-        if (obj.tg || obj.fbName || obj.fbLink || obj.remarks) {
+        if (obj.fbName || obj.fbLink || obj.telegram || obj.offerStatus || obj.phone || obj.accountName) {
           data.influencers.push(obj);
           logHistory("influencer", obj);
           imported++;
@@ -1398,20 +1437,20 @@
         const r = h.data;
         return {
           "Date": date, "Time": time, "Entity": "influencer",
-          "TG Username": r.tg || "", "FB Name": r.fbName || "",
-          "FB Link": r.fbLink || "", "Remarks": r.remarks || "",
-          "Agent Line": "", "Domain": "", "Vlogger TG": "", "Contract": "",
-          "State": "", "My TG": ""
+          "FB名字": r.fbName || "", "FB链接": r.fbLink || "",
+          "飞机": r.telegram || "", "offer/status": r.offerStatus || "",
+          "手机号": r.phone || "", "date": r.date || "",
+          "Account name": r.accountName || "",
+          "Agent Line": "", "Domain": "", "Vlogger TG": "", "Contract": "", "State": "", "My TG": "", "Remarks": ""
         };
       } else {
         const r = h.data;
         return {
           "Date": date, "Time": time, "Entity": "contract",
-          "TG Username": "", "FB Name": "", "FB Link": "",
-          "Remarks": r.remarks || "",
+          "FB名字": "", "FB链接": "", "飞机": "", "offer/status": "", "手机号": "", "date": "", "Account name": "",
           "Agent Line": r.agentLine || "", "Domain": r.domain || "",
           "Vlogger TG": r.vloggerTg || "", "Contract": r.contract || "",
-          "State": r.state || "", "My TG": r.myTg || ""
+          "State": r.state || "", "My TG": r.myTg || "", "Remarks": r.remarks || ""
         };
       }
     });
@@ -1440,19 +1479,23 @@
       return;
     }
 
-    const header = "Date,Time,Entity,TG Username,FB Name,FB Link,Remarks,Agent Line,Domain,Vlogger TG,Contract,State,My TG";
+    const header = "Date,Time,Entity,FB名字,FB链接,飞机,offer/status,手机号,date,Account name,Agent Line,Domain,Vlogger TG,Contract,State,My TG,Remarks";
     const lines = rows.map(r => [
       r["Date"], r["Time"], r["Entity"],
-      `"${String(r["TG Username"]).replace(/"/g,'""')}"`,
-      `"${String(r["FB Name"]).replace(/"/g,'""')}"`,
-      `"${String(r["FB Link"]).replace(/"/g,'""')}"`,
-      `"${String(r["Remarks"]).replace(/"/g,'""')}"`,
+      `"${String(r["FB名字"]).replace(/"/g,'""')}"`,
+      `"${String(r["FB链接"]).replace(/"/g,'""')}"`,
+      `"${String(r["飞机"]).replace(/"/g,'""')}"`,
+      `"${String(r["offer/status"]).replace(/"/g,'""')}"`,
+      `"${String(r["手机号"]).replace(/"/g,'""')}"`,
+      `"${String(r["date"]).replace(/"/g,'""')}"`,
+      `"${String(r["Account name"]).replace(/"/g,'""')}"`,
       `"${String(r["Agent Line"]).replace(/"/g,'""')}"`,
       `"${String(r["Domain"]).replace(/"/g,'""')}"`,
       `"${String(r["Vlogger TG"]).replace(/"/g,'""')}"`,
       `"${String(r["Contract"]).replace(/"/g,'""')}"`,
       `"${String(r["State"]).replace(/"/g,'""')}"`,
-      `"${String(r["My TG"]).replace(/"/g,'""')}"`
+      `"${String(r["My TG"]).replace(/"/g,'""')}"`,
+      `"${String(r["Remarks"]).replace(/"/g,'""')}"`
     ].join(","));
     const csv = header + "\n" + lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1471,7 +1514,13 @@
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       const rows = data.influencers.map(r => ({
-        "TG Username": r.tg, "FB Name": r.fbName, "FB Link": r.fbLink, "Remarks": r.remarks
+        "FB名字": r.fbName, 
+        "FB链接": r.fbLink, 
+        "飞机": r.telegram, 
+        "offer/status": r.offerStatus,
+        "手机号": r.phone,
+        "date": r.date,
+        "Account name": r.accountName
       }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Influencers");
