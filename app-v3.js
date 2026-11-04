@@ -566,7 +566,7 @@
         agentLine: row.agentLine || "",
         taskPosted: row.taskPosted || "",
         releaseTime: row.releaseTime || "",
-        time: row.time || row.updateTime || "", // fallback to old updateTime
+        time: row.time || row.updateTime || "",
         contract: row.contract || "",
         first: row.first || "",
         second: row.second || "",
@@ -1543,7 +1543,7 @@
       // Calculate column widths based on content
       const colWidths = cols.map(c => c.length + 4);
       
-      data.influencers.forEach((r, i) => {
+      data.influencers.forEach((r) => {
         const rowData = keys.map((k, cIdx) => {
           const val = String(r[k] || "");
           if (val.length + 4 > colWidths[cIdx]) colWidths[cIdx] = val.length + 4;
@@ -1577,7 +1577,7 @@
         XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: -1 });
       });
       
-      // Apply styling (color, fit to text)
+      // Safe styling injection using cell objects
       const range = XLSX.utils.decode_range(ws['!ref']);
       for (let r = 1; r <= range.e.r; r++) {
         const rowData = data.contracts[r - 1];
