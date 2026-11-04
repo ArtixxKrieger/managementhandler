@@ -566,7 +566,7 @@
         agentLine: row.agentLine || "",
         taskPosted: row.taskPosted || "",
         releaseTime: row.releaseTime || "",
-        time: row.time || row.updateTime || "",
+        time: row.time || row.updateTime || "", // fallback to old updateTime
         contract: row.contract || "",
         first: row.first || "",
         second: row.second || "",
@@ -1522,8 +1522,11 @@
     toast(`history ${filenameDate}.csv downloaded`);
   }
 
-  function downloadExcel() {
-    if (typeof XLSX === "undefined") { toast("Excel library failed to load", { icon: "trash" }); return; }
+  async function downloadExcel() {
+    if (typeof ExcelJS === "undefined" || typeof saveAs === "undefined") {
+      toast("Excel styling library failed to load. Check your internet connection.", { icon: "trash" });
+      return;
+    }
     const dateSlug = todaySlug();
     
     if (activeTab === "history") { 
@@ -1534,82 +1537,135 @@
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       
-      const cols = ["FB名字", "FB链接", "飞机", "offer/status", "手机号", "date", "Account name"];
-      const keys = ["fbName", "fbLink", "telegram", "offerStatus", "phone", "date", "accountName"];
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Influencers');
       
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([cols]);
-      
-      // Calculate column widths based on content
-      const colWidths = cols.map(c => c.length + 4);
-      
-      data.influencers.forEach((r) => {
-        const rowData = keys.map((k, cIdx) => {
-          const val = String(r[k] || "");
-          if (val.length + 4 > colWidths[cIdx]) colWidths[cIdx] = val.length + 4;
-          return val;
+      ws.columns = [
+        { header: 'FB名字', key: 'fbName', width: 20 },
+        { header: 'FB链接', key: 'fbLink', width: 35 },
+        { header: '飞机', key: 'telegram', width: 20 },
+        { header: 'offer/status', key: 'offerStatus', width: 15 },
+        { header: '手机号', key: 'phone', width: 15 },
+        { header: 'date', key: 'date', width: 12 },
+        { header: 'Account name', key: 'accountName', width: 20 }
+      ];
+
+      data.influencers.forEach(r => {
+        ws.addRow({
+          fbName: r.fbName || "",
+          fbLink: r.fbLink || "",
+          telegram: r.telegram || "",
+          offerStatus: r.offerStatus || "",
+          phone: r.phone || "",
+          date: r.date || "",
+          accountName: r.accountName || ""
         });
-        XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: -1 });
       });
       
-      ws['!cols'] = colWidths.map(w => ({ wch: w }));
-      ws['!rows'] = [{ hpt: 24 }].concat(data.influencers.map(() => ({ hpt: 20 })));
-
-      XLSX.utils.book_append_sheet(wb, ws, "Influencers");
-      XLSX.writeFile(wb, `influencers ${dateSlug}.xlsx`);
+      styleBaseSheet(ws);
+      
+      const buffer = await wb.xlsx.writeBuffer();
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `influencers ${dateSlug}.xlsx`);
       toast(`influencers ${dateSlug}.xlsx downloaded`);
+      
     } else {
       if (!data.contracts.length) { toast("No contracts to export", { icon: "trash" }); return; }
       
-      const cols = ["代理线", "发布任务", "发布时间", "时间", "合同", "第一笔", "第二笔", "第三笔", "博主电报", "推广域名", "状态", "我的电报", "备注"];
-      const keys = ["agentLine", "taskPosted", "releaseTime", "time", "contract", "first", "second", "third", "vloggerTg", "domain", "state", "myTg", "remarks"];
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Contracts');
       
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([cols]);
-      const colWidths = cols.map(c => c.length + 4);
-      
+      ws.columns = [
+        { header: '代理线', key: 'agentLine', width: 15 },
+        { header: '发布任务', key: 'taskPosted', width: 12 },
+        { header: '发布时间', key: 'releaseTime', width: 15 },
+        { header: '时间', key: 'time', width: 15 },
+        { header: '合同', key: 'contract', width: 12 },
+        { header: '第一笔', key: 'first', width: 10 },
+        { header: '第二笔', key: 'second', width: 10 },
+        { header: '第三笔', key: 'third', width: 10 },
+        { header: '博主电报', key: 'vloggerTg', width: 18 },
+        { header: '推广域名', key: 'domain', width: 40 },
+        { header: '状态', key: 'state', width: 15 },
+        { header: '我的电报', key: 'myTg', width: 18 },
+        { header: '备注', key: 'remarks', width: 20 }
+      ];
+
       data.contracts.forEach(r => {
-        const rowData = keys.map((k, cIdx) => {
-          const val = String(r[k] || "");
-          if (val.length + 4 > colWidths[cIdx]) colWidths[cIdx] = val.length + 4;
-          return val;
+        ws.addRow({
+          agentLine: r.agentLine || "",
+          taskPosted: r.taskPosted || "",
+          releaseTime: r.releaseTime || "",
+          time: r.time || "",
+          contract: r.contract || "",
+          first: r.first || "",
+          second: r.second || "",
+          third: r.third || "",
+          vloggerTg: r.vloggerTg || "",
+          domain: r.domain || "",
+          state: r.state || "",
+          myTg: r.myTg || "",
+          remarks: r.remarks || ""
         });
-        XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: -1 });
       });
       
-      // Safe styling injection using cell objects
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      for (let r = 1; r <= range.e.r; r++) {
-        const rowData = data.contracts[r - 1];
-        for (let c = range.s.c; c <= range.e.c; c++) {
-          const cellRef = XLSX.utils.encode_cell({ r, c });
-          if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
-          
-          // Base alignment to center vertically and wrap text
-          ws[cellRef].s = { 
-            alignment: { vertical: "center", wrapText: true } 
-          };
-          
-          if (rowData && rowData.state === "Account banned") {
-             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; // Red background
-             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
-          } else if (rowData && rowData.state === "Scammer") {
-             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; // Red background
-             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
-          } else if (rowData && rowData.state === "Done") {
-             ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FF00B050" } }; // Green background
-             ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; // White text
-          }
-        }
-      }
+      styleBaseSheet(ws);
       
-      ws['!cols'] = colWidths.map(w => ({ wch: w }));
-      ws['!rows'] = [{ hpt: 24 }].concat(data.contracts.map(() => ({ hpt: 20 })));
+      // Apply row coloring
+      ws.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        
+        // rowNumber is 1-indexed, so data index is rowNumber - 2
+        const rowData = data.contracts[rowNumber - 2];
+        if (!rowData) return;
 
-      XLSX.utils.book_append_sheet(wb, ws, "Contracts");
-      XLSX.writeFile(wb, `contracts ${dateSlug}.xlsx`);
+        let fillColor = null;
+        
+        if (rowData.state === "Account banned" || rowData.state === "Scammer") {
+          fillColor = "FFFF0000"; // Red
+        } else if (rowData.state === "Done") {
+          fillColor = "FF00B050"; // Green
+        }
+
+        if (fillColor) {
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: fillColor }
+            };
+            cell.font = { color: { argb: "FFFFFFFF" }, bold: true }; // White bold text
+          });
+        }
+      });
+      
+      const buffer = await wb.xlsx.writeBuffer();
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `contracts ${dateSlug}.xlsx`);
       toast(`contracts ${dateSlug}.xlsx downloaded`);
     }
+  }
+  
+  function styleBaseSheet(ws) {
+    // 1. Style Headers
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } }; // Indigo
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 24;
+    
+    // 2. Style all cells (alignment & wrap)
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { vertical: 'middle', wrapText: true };
+        if (rowNumber > 1) {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          };
+        }
+      });
+    });
   }
 
   function exportJson() {
@@ -1876,3 +1932,4 @@
     init();
   }
 })();
+          
