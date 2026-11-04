@@ -21,7 +21,7 @@
     "Scammer": "state-scammer"
   };
 
-  const INF_FIELDS = ["fbName", "fbLink", "telegram", "phone", "date", "accountName"];
+  const INF_FIELDS = ["fbName", "fbLink", "telegram", "phone", "date"];
   const INF_DUP_FIELDS = ["fbLink", "telegram", "fbName"];
   
   const CON_TEXT_FIELDS = ["agentLine", "taskPosted", "releaseTime", "time", "contract", "first", "second", "third", "vloggerTg", "domain"];
@@ -127,8 +127,7 @@
            !((d.fbLink || "").trim()) && 
            !((d.telegram || "").trim()) && 
            !((d.phone || "").trim()) &&
-           !((d.date || "").trim()) &&
-           !((d.accountName || "").trim());
+           !((d.date || "").trim());
   }
 
   function isEmptyContract(d) {
@@ -242,7 +241,7 @@
         return all.some(h => {
           const d = h.data;
           const hay = h.entity === "influencer"
-            ? [d.fbName, d.fbLink, d.telegram, d.phone, d.date, d.accountName].join(" ").toLowerCase()
+            ? [d.fbName, d.fbLink, d.telegram, d.phone, d.date].join(" ").toLowerCase()
             : [d.agentLine, d.domain, d.vloggerTg, d.myTg, d.contract, d.state, d.remarks].join(" ").toLowerCase();
           return hay.includes(searchFilter);
         });
@@ -357,7 +356,7 @@
 
     const dayFilter = ($("#histDetailSearch")?.value || "").toLowerCase();
     if (dayFilter) {
-      const matchInf = (r) => [r.fbName, r.fbLink, r.telegram, r.phone, r.date, r.accountName].join(" ").toLowerCase().includes(dayFilter);
+      const matchInf = (r) => [r.fbName, r.fbLink, r.telegram, r.phone, r.date].join(" ").toLowerCase().includes(dayFilter);
       const matchCon = (r) => [r.agentLine, r.taskPosted, r.releaseTime, r.time, r.contract, r.first, r.second, r.third, r.vloggerTg, r.domain, r.state, r.myTg, r.remarks].join(" ").toLowerCase().includes(dayFilter);
       bucket = {
         influencers: bucket.influencers.filter(h => matchInf(h.data)),
@@ -385,7 +384,6 @@
                   <th>飞机</th>
                   <th>手机号</th>
                   <th>date</th>
-                  <th>Account name</th>
                   <th>Time</th>
                 </tr>
               </thead>
@@ -404,7 +402,6 @@
           <td>${esc(r.telegram) || "—"}</td>
           <td>${esc(r.phone) || "—"}</td>
           <td>${esc(r.date) || "—"}</td>
-          <td>${esc(r.accountName) || "—"}</td>
           <td class="hist-time-cell">${relativeTime(h.ts)}</td>
         `;
         tbody.appendChild(tr);
@@ -553,8 +550,7 @@
         fbLink: row.fbLink || "",
         telegram: row.telegram || row.tg || "",
         phone: row.phone || "",
-        date: row.date || "",
-        accountName: row.accountName || ""
+        date: row.date || ""
       };
     } else {
       return {
@@ -562,7 +558,7 @@
         agentLine: row.agentLine || "",
         taskPosted: row.taskPosted || "",
         releaseTime: row.releaseTime || "",
-        time: row.time || row.updateTime || "", // fallback to old updateTime
+        time: row.time || row.updateTime || "",
         contract: row.contract || "",
         first: row.first || "",
         second: row.second || "",
@@ -631,8 +627,7 @@
             fbLink: h.data.fbLink || "",
             telegram: h.data.telegram || h.data.tg || "",
             phone: h.data.phone || "",
-            date: h.data.date || "",
-            accountName: h.data.accountName || ""
+            date: h.data.date || ""
           };
         } else {
           h.data = {
@@ -816,8 +811,7 @@
       fbLink: "", 
       telegram: "", 
       phone: "", 
-      date: todaySlug(), 
-      accountName: "" 
+      date: todaySlug()
     };
     data.influencers.push(row);
     save();
@@ -861,8 +855,7 @@
       fbLink: src.fbLink || "",
       telegram: src.telegram || "",
       phone: "",
-      date: todaySlug(),
-      accountName: ""
+      date: todaySlug()
     };
 
     data.influencers.push(newRow);
@@ -905,7 +898,7 @@
 
     rows.forEach((row) => {
       const rowId = row._id;
-      const hay = [row.fbName, row.fbLink, row.telegram, row.phone, row.date, row.accountName].map(v => (v || "").toLowerCase()).join(" ");
+      const hay = [row.fbName, row.fbLink, row.telegram, row.phone, row.date].map(v => (v || "").toLowerCase()).join(" ");
       if (filter && !hay.includes(filter)) return;
       visible++;
 
@@ -1228,8 +1221,7 @@
       { key: "fbLink",      label: "FB链接",       value: row.fbLink },
       { key: "telegram",    label: "飞机",         value: row.telegram },
       { key: "phone",       label: "手机号",       value: row.phone },
-      { key: "date",        label: "date",         value: row.date },
-      { key: "accountName", label: "Account name", value: row.accountName }
+      { key: "date",        label: "date",         value: row.date }
     ], (v) => {
       Object.assign(row, v);
       save(); renderInfluencers();
@@ -1286,8 +1278,7 @@
     "fb链接": "fbLink", "fb link": "fbLink", "link": "fbLink", "facebook link": "fbLink", "profile link": "fbLink",
     "飞机": "telegram", "telegram": "telegram", "tg": "telegram", "tg username": "telegram",
     "手机号": "phone", "phone": "phone", "phone number": "phone", "number": "phone",
-    "date": "date",
-    "account name": "accountName", "account": "accountName"
+    "date": "date"
   };
 
   const CON_COL_MAP = {
@@ -1316,12 +1307,12 @@
 
     if (target === "influencers") {
       bodyRows.forEach(r => {
-        const obj = { _id: uid(), fbName: "", fbLink: "", telegram: "", phone: "", date: todaySlug(), accountName: "" };
+        const obj = { _id: uid(), fbName: "", fbLink: "", telegram: "", phone: "", date: todaySlug() };
         headers.forEach((h, idx) => {
           const key = map[normalizeHeader(h)];
           if (key) obj[key] = String(r[idx] == null ? "" : r[idx]).trim();
         });
-        if (obj.fbName || obj.fbLink || obj.telegram || obj.phone || obj.accountName) {
+        if (obj.fbName || obj.fbLink || obj.telegram || obj.phone) {
           data.influencers.push(obj);
           logHistory("influencer", obj);
           imported++;
@@ -1437,14 +1428,13 @@
           "FB名字": r.fbName || "", "FB链接": r.fbLink || "",
           "飞机": r.telegram || "", 
           "手机号": r.phone || "", "date": r.date || "",
-          "Account name": r.accountName || "",
           "代理线": "", "发布任务": "", "发布时间": "", "时间": "", "合同": "", "第一笔": "", "第二笔": "", "第三笔": "", "博主电报": "", "推广域名": "", "状态": "", "我的电报": "", "备注": ""
         };
       } else {
         const r = h.data;
         return {
           "Date": date, "Time": time, "Entity": "contract",
-          "FB名字": "", "FB链接": "", "飞机": "", "手机号": "", "date": "", "Account name": "",
+          "FB名字": "", "FB链接": "", "飞机": "", "手机号": "", "date": "",
           "代理线": r.agentLine || "", "发布任务": r.taskPosted || "",
           "发布时间": r.releaseTime || "", "时间": r.time || "",
           "合同": r.contract || "", "第一笔": r.first || "",
@@ -1479,7 +1469,7 @@
       return;
     }
 
-    const header = "Date,Time,Entity,FB名字,FB链接,飞机,手机号,date,Account name,代理线,发布任务,发布时间,时间,合同,第一笔,第二笔,第三笔,博主电报,推广域名,状态,我的电报,备注";
+    const header = "Date,Time,Entity,FB名字,FB链接,飞机,手机号,date,代理线,发布任务,发布时间,时间,合同,第一笔,第二笔,第三笔,博主电报,推广域名,状态,我的电报,备注";
     const lines = rows.map(r => [
       r["Date"], r["Time"], r["Entity"],
       `"${String(r["FB名字"]).replace(/"/g,'""')}"`,
@@ -1487,7 +1477,6 @@
       `"${String(r["飞机"]).replace(/"/g,'""')}"`,
       `"${String(r["手机号"]).replace(/"/g,'""')}"`,
       `"${String(r["date"]).replace(/"/g,'""')}"`,
-      `"${String(r["Account name"]).replace(/"/g,'""')}"`,
       `"${String(r["代理线"]).replace(/"/g,'""')}"`,
       `"${String(r["发布任务"]).replace(/"/g,'""')}"`,
       `"${String(r["发布时间"]).replace(/"/g,'""')}"`,
@@ -1524,8 +1513,8 @@
     if (activeTab === "influencers") {
       if (!data.influencers.length) { toast("No influencers to export", { icon: "trash" }); return; }
       
-      const cols = ["FB名字", "FB链接", "飞机", "手机号", "date", "Account name"];
-      const keys = ["fbName", "fbLink", "telegram", "phone", "date", "accountName"];
+      const cols = ["FB名字", "FB链接", "飞机", "手机号", "date"];
+      const keys = ["fbName", "fbLink", "telegram", "phone", "date"];
       
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([cols]);
