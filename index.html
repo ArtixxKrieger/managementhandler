@@ -130,10 +130,6 @@
         <svg class="icon-svg"><use href="#i-shuffle"/></svg>
         <span>Scramble</span>
       </button>
-      <button id="deleteSelectedInfBtn" class="btn danger" style="display:none" title="Delete Selected">
-        <svg class="icon-svg"><use href="#i-trash"/></svg>
-        <span>Delete Selected</span>
-      </button>
       <div class="search-wrap">
         <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
         <input type="search" id="infSearch" class="search" placeholder="Search influencers...">
@@ -145,7 +141,6 @@
         <table id="infTable">
           <thead>
             <tr>
-              <th class="col-check"><input type="checkbox" id="checkAllInf"></th>
               <th data-sort="fbName">FB名字 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
               <th data-sort="fbLink">FB链接 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
               <th data-sort="telegram">飞机 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
@@ -158,7 +153,7 @@
         </table>
       </div>
       <div class="empty-state" id="infEmpty" hidden>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
@@ -188,10 +183,6 @@
         <span>Import Excel</span>
       </label>
       <input type="file" id="importConXlsx" accept=".xlsx,.xls" hidden>
-      <button id="deleteSelectedConBtn" class="btn danger" style="display:none" title="Delete Selected">
-        <svg class="icon-svg"><use href="#i-trash"/></svg>
-        <span>Delete Selected</span>
-      </button>
       <div class="search-wrap">
         <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
         <input type="search" id="conSearch" class="search" placeholder="Search contracts...">
@@ -203,7 +194,6 @@
         <table id="conTable">
           <thead>
             <tr>
-              <th class="col-check"><input type="checkbox" id="checkAllCon"></th>
               <th data-sort="agentLine">代理线 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
               <th data-sort="taskPosted">发布任务 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
               <th data-sort="releaseTime">发布时间 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
@@ -224,7 +214,7 @@
         </table>
       </div>
       <div class="empty-state" id="conEmpty" hidden>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>
