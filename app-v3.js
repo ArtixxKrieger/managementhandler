@@ -36,6 +36,9 @@
   let activeTab = "influencers";
   let csvImportTarget = null;
   const pickedHistoryIds = new Set();
+  const selectedInfluencers = new Set();
+  const selectedContracts = new Set();
+  let isCompactMode = false;
 
   let histView = "days";
   let histSelectedDay = null;
@@ -516,6 +519,18 @@
   }
   setInterval(updateLastSaved, 5000);
 
+  function updateDynamicTitle() {
+    const infCount = data.influencers.length;
+    const conCount = data.contracts.length;
+    let newTitle = "Influencer Manager";
+    if (infCount > 0 || conCount > 0) {
+      newTitle = `(${infCount + conCount}) Influencer Manager`;
+    }
+    if (document.title !== newTitle) {
+      document.title = newTitle;
+    }
+  }
+
   function initTheme() {
     let saved = localStorage.getItem(THEME_KEY);
     if (!saved) saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -700,6 +715,7 @@
     const a = $("#infBadge"); const b = $("#conBadge");
     if (a) a.textContent = data.influencers.length;
     if (b) b.textContent = data.contracts.length;
+    updateDynamicTitle();
   }
 
   function initTabs() {
@@ -872,6 +888,7 @@
     const row = data.influencers[idx];
     lastDeleted = { type: "influencer", row: { ...row }, index: idx };
     data.influencers.splice(idx, 1);
+    selectedInfluencers.delete(id);
     save(); renderInfluencers();
     toast("Influencer deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
@@ -884,6 +901,63 @@
     toast("Restored");
   }
 
+  function handleBatchDeleteInf() {
+    if (selectedInfluencers.size === 0) return;
+    if (!confirm(`Delete ${selectedInfluencers.size} selected influencer(s)?`)) return;
+    data.influencers = data.influencers.filter(r => !selectedInfluencers.has(r._id));
+    selectedInfluencers.clear();
+    save(); renderInfluencers();
+    toast("Selected influencers deleted", { icon: "trash" });
+  }
+
+  function copyToClipboard(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      toast("Copied to clipboard");
+    }).catch(() => {
+      toast("Failed to copy", { icon: "trash" });
+    });
+  }
+
+  function createTd(k, row, filter, rowId, updateFn) {
+    const td = document.createElement("td");
+    td.contentEditable = "true"; 
+    td.dataset.k = k;
+    td.innerHTML = escAndHighlight(row[k], filter);
+    
+    if (INF_DUP_FIELDS.includes(k) && window._currentDups && window._currentDups[k] && window._currentDups[k].has(norm(row[k]))) {
+      td.classList.add("dup");
+    }
+
+    if (row[k]) {
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "copy-btn";
+      copyBtn.innerHTML = svgIcon("copy", 12);
+      copyBtn.title = "Copy to clipboard";
+      copyBtn.onclick = (e) => {
+        e.stopPropagation();
+        copyToClipboard(row[k]);
+      };
+      td.appendChild(copyBtn);
+    }
+
+    td.addEventListener("blur", () => {
+      const newVal = td.innerText.trim();
+      const live = updateFn(rowId);
+      if (!live) return;
+      if (live[k] !== newVal) {
+        live[k] = newVal;
+        save(); flashCell(td);
+        updateHistorySnapshot(k === "state" || k === "remarks" ? "contract" : "influencer", live);
+      }
+      // Re-render specific cell to remove copy btn if empty and re-add if filled
+      setTimeout(() => renderInfluencers(), 10); 
+    });
+
+    td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
+    return td;
+  }
+
   function renderInfluencers() {
     const filter = ($("#infSearch")?.value || "").toLowerCase();
     const tbody = $("#infTable tbody");
@@ -894,7 +968,11 @@
     tbody.innerHTML = ""; cards.innerHTML = "";
     let visible = 0;
     const rows = sortedData(data.influencers, infSort);
-    const dups = dupSet(data.influencers, INF_DUP_FIELDS);
+    window._currentDups = dupSet(data.influencers, INF_DUP_FIELDS);
+    const dups = window._currentDups;
+
+    const checkAll = $("#checkAllInf");
+    if (checkAll) checkAll.checked = selectedInfluencers.size > 0 && selectedInfluencers.size === rows.length;
 
     rows.forEach((row) => {
       const rowId = row._id;
@@ -903,27 +981,26 @@
       visible++;
 
       const tr = document.createElement("tr");
+      
+      // Checkbox
+      const checkTd = document.createElement("td");
+      checkTd.className = "col-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedInfluencers.has(rowId);
+      cb.onchange = (e) => {
+        if (e.target.checked) selectedInfluencers.add(rowId);
+        else selectedInfluencers.delete(rowId);
+        updateBatchUI();
+      };
+      checkTd.appendChild(cb);
+      tr.appendChild(checkTd);
+
+      // Text fields
       INF_FIELDS.forEach(k => {
-        const td = document.createElement("td");
-        td.contentEditable = "true"; td.dataset.k = k;
-        td.innerHTML = escAndHighlight(row[k], filter);
-        if (INF_DUP_FIELDS.includes(k) && dups[k] && dups[k].has(norm(row[k]))) {
-          td.classList.add("dup");
-        }
-        td.addEventListener("blur", () => {
-          const newVal = td.innerText.trim();
-          const live = data.influencers.find(r => r._id === rowId);
-          if (!live) return;
-          if (live[k] !== newVal) {
-            live[k] = newVal;
-            save(); flashCell(td);
-            updateHistorySnapshot("influencer", live);
-          }
-          renderInfluencers();
-        });
-        td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
-        tr.appendChild(td);
+        tr.appendChild(createTd(k, row, filter, rowId, (id) => data.influencers.find(r => r._id === id)));
       });
+
       const delTd = document.createElement("td");
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn"; delBtn.title = "Delete";
@@ -971,6 +1048,7 @@
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
         : `<div class="empty-state"><h3>No influencers yet</h3><p>Tap <strong>Add Influencer</strong>.</p></div>`;
     }
+    updateBatchUI();
   }
 
   function addContract() {
@@ -994,8 +1072,18 @@
     const row = data.contracts[idx];
     lastDeleted = { type: "contract", row: { ...row }, index: idx };
     data.contracts.splice(idx, 1);
+    selectedContracts.delete(id);
     save(); renderContracts();
     toast("Contract deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
+  }
+
+  function handleBatchDeleteCon() {
+    if (selectedContracts.size === 0) return;
+    if (!confirm(`Delete ${selectedContracts.size} selected contract(s)?`)) return;
+    data.contracts = data.contracts.filter(r => !selectedContracts.has(r._id));
+    selectedContracts.clear();
+    save(); renderContracts();
+    toast("Selected contracts deleted", { icon: "trash" });
   }
 
   function renderContracts() {
@@ -1009,6 +1097,9 @@
     let visible = 0;
     const rows = sortedData(data.contracts, conSort);
 
+    const checkAll = $("#checkAllCon");
+    if (checkAll) checkAll.checked = selectedContracts.size > 0 && selectedContracts.size === rows.length;
+
     rows.forEach((row) => {
       const rowId = row._id;
       const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state, row.remarks]
@@ -1017,23 +1108,22 @@
       visible++;
 
       const tr = document.createElement("tr");
+      
+      const checkTd = document.createElement("td");
+      checkTd.className = "col-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedContracts.has(rowId);
+      cb.onchange = (e) => {
+        if (e.target.checked) selectedContracts.add(rowId);
+        else selectedContracts.delete(rowId);
+        updateBatchUI();
+      };
+      checkTd.appendChild(cb);
+      tr.appendChild(checkTd);
+
       CON_TEXT_FIELDS.forEach(k => {
-        const td = document.createElement("td");
-        td.contentEditable = "true"; td.dataset.k = k;
-        td.innerHTML = escAndHighlight(row[k], filter);
-        td.addEventListener("blur", () => {
-          const newVal = td.innerText.trim();
-          const live = data.contracts.find(r => r._id === rowId);
-          if (!live) return;
-          if (live[k] !== newVal) {
-            live[k] = newVal;
-            save(); flashCell(td);
-            updateHistorySnapshot("contract", live);
-          }
-          td.innerHTML = escAndHighlight(live[k], filter);
-        });
-        td.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); td.blur(); } });
-        tr.appendChild(td);
+        tr.appendChild(createTd(k, row, filter, rowId, (id) => data.contracts.find(r => r._id === id)));
       });
 
       const stateTd = document.createElement("td");
@@ -1058,6 +1148,14 @@
       const myTgTd = document.createElement("td");
       myTgTd.contentEditable = "true"; myTgTd.dataset.k = "myTg";
       myTgTd.innerHTML = escAndHighlight(row.myTg, filter);
+      if (row.myTg) {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-btn";
+        copyBtn.innerHTML = svgIcon("copy", 12);
+        copyBtn.title = "Copy to clipboard";
+        copyBtn.onclick = (e) => { e.stopPropagation(); copyToClipboard(row.myTg); };
+        myTgTd.appendChild(copyBtn);
+      }
       myTgTd.addEventListener("blur", () => {
         const newVal = myTgTd.innerText.trim();
         const live = data.contracts.find(r => r._id === rowId);
@@ -1068,7 +1166,7 @@
           save(); flashCell(myTgTd);
           updateHistorySnapshot("contract", live);
         }
-        myTgTd.innerHTML = escAndHighlight(live.myTg, filter);
+        setTimeout(() => renderContracts(), 10);
       });
       myTgTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); myTgTd.blur(); } });
       tr.appendChild(myTgTd);
@@ -1076,6 +1174,14 @@
       const remarksTd = document.createElement("td");
       remarksTd.contentEditable = "true"; remarksTd.dataset.k = "remarks";
       remarksTd.innerHTML = escAndHighlight(row.remarks, filter);
+      if (row.remarks) {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-btn";
+        copyBtn.innerHTML = svgIcon("copy", 12);
+        copyBtn.title = "Copy to clipboard";
+        copyBtn.onclick = (e) => { e.stopPropagation(); copyToClipboard(row.remarks); };
+        remarksTd.appendChild(copyBtn);
+      }
       remarksTd.addEventListener("blur", () => {
         const newVal = remarksTd.innerText.trim();
         const live = data.contracts.find(r => r._id === rowId);
@@ -1085,7 +1191,7 @@
           save(); flashCell(remarksTd);
           updateHistorySnapshot("contract", live);
         }
-        remarksTd.innerHTML = escAndHighlight(live.remarks, filter);
+        setTimeout(() => renderContracts(), 10);
       });
       remarksTd.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); remarksTd.blur(); } });
       tr.appendChild(remarksTd);
@@ -1151,6 +1257,27 @@
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
         : `<div class="empty-state"><h3>No contracts yet</h3><p>Tap <strong>Add Contract</strong>.</p></div>`;
     }
+    updateBatchUI();
+  }
+
+  function updateBatchUI() {
+    const delBtnInf = $("#deleteSelectedInfBtn");
+    if (delBtnInf) {
+      delBtnInf.style.display = selectedInfluencers.size > 0 ? "inline-flex" : "none";
+      delBtnInf.querySelector("span").textContent = `Delete Selected (${selectedInfluencers.size})`;
+    }
+    
+    const delBtnCon = $("#deleteSelectedConBtn");
+    if (delBtnCon) {
+      delBtnCon.style.display = selectedContracts.size > 0 ? "inline-flex" : "none";
+      delBtnCon.querySelector("span").textContent = `Delete Selected (${selectedContracts.size})`;
+    }
+
+    const checkInf = $("#checkAllInf");
+    if (checkInf) checkInf.checked = selectedInfluencers.size > 0 && selectedInfluencers.size === data.influencers.length;
+    
+    const checkCon = $("#checkAllCon");
+    if (checkCon) checkCon.checked = selectedContracts.size > 0 && selectedContracts.size === data.contracts.length;
   }
 
   function flashCell(td) {
@@ -1735,6 +1862,8 @@
     bind("histLoadMoreBtn", () => { histDaysShown += 30; renderHistory(); });
     bind("scrambleInfBtn", scrambleInfluencers);
     bind("scrambleConBtn", scrambleContracts);
+    bind("deleteSelectedInfBtn", handleBatchDeleteInf);
+    bind("deleteSelectedConBtn", handleBatchDeleteCon);
     bind("clearHist", () => {
       if (!history.length) { toast("History already empty"); return; }
       if (confirm("Clear ALL history? This cannot be undone.")) {
@@ -1744,6 +1873,37 @@
         toast("History cleared");
       }
     });
+
+    // Focus Mode & Density Toggles
+    bind("focusModeBtn", () => {
+      document.body.classList.toggle("focus-mode");
+      const isFocus = document.body.classList.contains("focus-mode");
+      document.querySelector("#focusModeBtn .icon-max").style.display = isFocus ? "none" : "inline-block";
+      document.querySelector("#focusModeBtn .icon-min").style.display = isFocus ? "inline-block" : "none";
+    });
+
+    bind("densityBtn", () => {
+      document.body.classList.toggle("compact-mode");
+      toast(document.body.classList.contains("compact-mode") ? "Compact mode on" : "Comfortable mode on");
+    });
+
+    // Batch Select Checkboxes
+    const checkAllInf = $("#checkAllInf");
+    if (checkAllInf) {
+      checkAllInf.addEventListener("change", (e) => {
+        if (e.target.checked) data.influencers.forEach(r => selectedInfluencers.add(r._id));
+        else selectedInfluencers.clear();
+        renderInfluencers();
+      });
+    }
+    const checkAllCon = $("#checkAllCon");
+    if (checkAllCon) {
+      checkAllCon.addEventListener("change", (e) => {
+        if (e.target.checked) data.contracts.forEach(r => selectedContracts.add(r._id));
+        else selectedContracts.clear();
+        renderContracts();
+      });
+    }
 
     $$(".hist-tab").forEach(t => {
       t.addEventListener("click", () => setHistDetailFilter(t.dataset.histTab));
@@ -1822,6 +1982,7 @@
       if (e.key === "Escape") {
         if (modal && !modal.hidden) { closeModal(); return; }
         if (csvModal && !csvModal.hidden) { closeCsvModal(); return; }
+        if (document.body.classList.contains("focus-mode")) { document.body.classList.remove("focus-mode"); return; }
         if (activeTab === "history" && histView === "detail") { closeDayDetail(); return; }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
