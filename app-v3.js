@@ -36,9 +36,6 @@
   let activeTab = "influencers";
   let csvImportTarget = null;
   const pickedHistoryIds = new Set();
-  const selectedInfluencers = new Set();
-  const selectedContracts = new Set();
-  let isCompactMode = false;
 
   let histView = "days";
   let histSelectedDay = null;
@@ -888,7 +885,6 @@
     const row = data.influencers[idx];
     lastDeleted = { type: "influencer", row: { ...row }, index: idx };
     data.influencers.splice(idx, 1);
-    selectedInfluencers.delete(id);
     save(); renderInfluencers();
     toast("Influencer deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
   }
@@ -899,15 +895,6 @@
     else { data.contracts.splice(index, 0, row); save(); renderContracts(); }
     lastDeleted = null;
     toast("Restored");
-  }
-
-  function handleBatchDeleteInf() {
-    if (selectedInfluencers.size === 0) return;
-    if (!confirm(`Delete ${selectedInfluencers.size} selected influencer(s)?`)) return;
-    data.influencers = data.influencers.filter(r => !selectedInfluencers.has(r._id));
-    selectedInfluencers.clear();
-    save(); renderInfluencers();
-    toast("Selected influencers deleted", { icon: "trash" });
   }
 
   function copyToClipboard(text) {
@@ -971,9 +958,6 @@
     window._currentDups = dupSet(data.influencers, INF_DUP_FIELDS);
     const dups = window._currentDups;
 
-    const checkAll = $("#checkAllInf");
-    if (checkAll) checkAll.checked = selectedInfluencers.size > 0 && selectedInfluencers.size === rows.length;
-
     rows.forEach((row) => {
       const rowId = row._id;
       const hay = [row.fbName, row.fbLink, row.telegram, row.phone, row.date].map(v => (v || "").toLowerCase()).join(" ");
@@ -981,20 +965,6 @@
       visible++;
 
       const tr = document.createElement("tr");
-      
-      // Checkbox
-      const checkTd = document.createElement("td");
-      checkTd.className = "col-check";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = selectedInfluencers.has(rowId);
-      cb.onchange = (e) => {
-        if (e.target.checked) selectedInfluencers.add(rowId);
-        else selectedInfluencers.delete(rowId);
-        updateBatchUI();
-      };
-      checkTd.appendChild(cb);
-      tr.appendChild(checkTd);
 
       // Text fields
       INF_FIELDS.forEach(k => {
@@ -1048,7 +1018,6 @@
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
         : `<div class="empty-state"><h3>No influencers yet</h3><p>Tap <strong>Add Influencer</strong>.</p></div>`;
     }
-    updateBatchUI();
   }
 
   function addContract() {
@@ -1072,18 +1041,8 @@
     const row = data.contracts[idx];
     lastDeleted = { type: "contract", row: { ...row }, index: idx };
     data.contracts.splice(idx, 1);
-    selectedContracts.delete(id);
     save(); renderContracts();
     toast("Contract deleted", { icon: "trash", actionLabel: "Undo", duration: 6000, onAction: undoDelete });
-  }
-
-  function handleBatchDeleteCon() {
-    if (selectedContracts.size === 0) return;
-    if (!confirm(`Delete ${selectedContracts.size} selected contract(s)?`)) return;
-    data.contracts = data.contracts.filter(r => !selectedContracts.has(r._id));
-    selectedContracts.clear();
-    save(); renderContracts();
-    toast("Selected contracts deleted", { icon: "trash" });
   }
 
   function renderContracts() {
@@ -1097,9 +1056,6 @@
     let visible = 0;
     const rows = sortedData(data.contracts, conSort);
 
-    const checkAll = $("#checkAllCon");
-    if (checkAll) checkAll.checked = selectedContracts.size > 0 && selectedContracts.size === rows.length;
-
     rows.forEach((row) => {
       const rowId = row._id;
       const hay = [row.agentLine, row.vloggerTg, row.domain, row.myTg, row.contract, row.state, row.remarks]
@@ -1108,19 +1064,6 @@
       visible++;
 
       const tr = document.createElement("tr");
-      
-      const checkTd = document.createElement("td");
-      checkTd.className = "col-check";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = selectedContracts.has(rowId);
-      cb.onchange = (e) => {
-        if (e.target.checked) selectedContracts.add(rowId);
-        else selectedContracts.delete(rowId);
-        updateBatchUI();
-      };
-      checkTd.appendChild(cb);
-      tr.appendChild(checkTd);
 
       CON_TEXT_FIELDS.forEach(k => {
         tr.appendChild(createTd(k, row, filter, rowId, (id) => data.contracts.find(r => r._id === id)));
@@ -1257,27 +1200,6 @@
         ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search.</p></div>`
         : `<div class="empty-state"><h3>No contracts yet</h3><p>Tap <strong>Add Contract</strong>.</p></div>`;
     }
-    updateBatchUI();
-  }
-
-  function updateBatchUI() {
-    const delBtnInf = $("#deleteSelectedInfBtn");
-    if (delBtnInf) {
-      delBtnInf.style.display = selectedInfluencers.size > 0 ? "inline-flex" : "none";
-      delBtnInf.querySelector("span").textContent = `Delete Selected (${selectedInfluencers.size})`;
-    }
-    
-    const delBtnCon = $("#deleteSelectedConBtn");
-    if (delBtnCon) {
-      delBtnCon.style.display = selectedContracts.size > 0 ? "inline-flex" : "none";
-      delBtnCon.querySelector("span").textContent = `Delete Selected (${selectedContracts.size})`;
-    }
-
-    const checkInf = $("#checkAllInf");
-    if (checkInf) checkInf.checked = selectedInfluencers.size > 0 && selectedInfluencers.size === data.influencers.length;
-    
-    const checkCon = $("#checkAllCon");
-    if (checkCon) checkCon.checked = selectedContracts.size > 0 && selectedContracts.size === data.contracts.length;
   }
 
   function flashCell(td) {
@@ -1862,8 +1784,6 @@
     bind("histLoadMoreBtn", () => { histDaysShown += 30; renderHistory(); });
     bind("scrambleInfBtn", scrambleInfluencers);
     bind("scrambleConBtn", scrambleContracts);
-    bind("deleteSelectedInfBtn", handleBatchDeleteInf);
-    bind("deleteSelectedConBtn", handleBatchDeleteCon);
     bind("clearHist", () => {
       if (!history.length) { toast("History already empty"); return; }
       if (confirm("Clear ALL history? This cannot be undone.")) {
@@ -1982,7 +1902,12 @@
       if (e.key === "Escape") {
         if (modal && !modal.hidden) { closeModal(); return; }
         if (csvModal && !csvModal.hidden) { closeCsvModal(); return; }
-        if (document.body.classList.contains("focus-mode")) { document.body.classList.remove("focus-mode"); return; }
+        if (document.body.classList.contains("focus-mode")) { 
+          document.body.classList.remove("focus-mode"); 
+          document.querySelector("#focusModeBtn .icon-max").style.display = "inline-block";
+          document.querySelector("#focusModeBtn .icon-min").style.display = "none";
+          return; 
+        }
         if (activeTab === "history" && histView === "detail") { closeDayDetail(); return; }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
