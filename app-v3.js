@@ -12,13 +12,13 @@
   const DAILY_RESET_KEY = "inf_contract_last_inf_reset";
   const HISTORY_LIMIT = 20000;
 
-  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer"];
+  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer/Stop"];
   const STATE_CLASS = {
     "Done": "state-done",
     "Account banned": "state-banned",
     "Pending": "state-pending",
     "In progress": "state-progress",
-    "Scammer": "state-scammer"
+    "Scammer/Stop": "state-scammer"
   };
 
   const INF_FIELDS = ["fbName", "fbLink", "telegram", "phone", "date"];
