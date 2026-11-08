@@ -188,15 +188,16 @@
   function deleteDay(dateKey) {
     const toRemove = history.filter(h => h.dateKey === dateKey).length;
     if (!toRemove) return;
-    if (!confirm(`Delete ${displayDay(dateKey)} from history?\n\n${toRemove} entr${toRemove===1?"y":"ies"} will be removed.\nYour live influencers and contracts lists are NOT affected.`)) return;
-    history = history.filter(h => h.dateKey !== dateKey);
-    saveHistory();
-    if (histSelectedDay === dateKey) {
-      histSelectedDay = null;
-      histView = "days";
-    }
-    renderHistory();
-    toast(`Deleted ${toRemove} entr${toRemove===1?"y":"ies"} from ${displayDay(dateKey)}`, { icon: "trash" });
+    showConfirm("Delete day from history?", `Delete ${displayDay(dateKey)} from history?<br><br>${toRemove} entr${toRemove===1?"y":"ies"} will be removed. Your live influencers and contracts lists are NOT affected.`, () => {
+      history = history.filter(h => h.dateKey !== dateKey);
+      saveHistory();
+      if (histSelectedDay === dateKey) {
+        histSelectedDay = null;
+        histView = "days";
+      }
+      renderHistory();
+      toast(`Deleted ${toRemove} entr${toRemove===1?"y":"ies"} from ${displayDay(dateKey)}`, { icon: "trash" });
+    });
   }
 
   function getDaysMap() {
@@ -532,9 +533,21 @@
     let saved = localStorage.getItem(THEME_KEY);
     if (!saved) saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     applyTheme(saved);
+    
+    // Desktop toggle
     const btn = $("#themeToggle");
     if (btn) {
       btn.addEventListener("click", () => {
+        const cur = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        applyTheme(next);
+        localStorage.setItem(THEME_KEY, next);
+      });
+    }
+    // Mobile toggle
+    const btnMob = $("#themeToggleMobile");
+    if (btnMob) {
+      btnMob.addEventListener("click", () => {
         const cur = document.documentElement.getAttribute("data-theme");
         const next = cur === "dark" ? "light" : "dark";
         applyTheme(next);
@@ -728,6 +741,9 @@
         activeTab = next;
         const label = { influencers: "Influencers", contracts: "Contracts", history: "History" }[next];
         updateStatus(label);
+        const titleEl = $("#pageTitle");
+        if (titleEl) titleEl.textContent = label;
+        
         if (next === "influencers") renderInfluencers();
         else if (next === "contracts") renderContracts();
         else {
@@ -777,11 +793,8 @@
   function updateSortIcons(tableSel, sortState) {
     $$(tableSel + " thead th[data-sort]").forEach(th => {
       th.classList.remove("sorted-asc", "sorted-desc");
-      const use = th.querySelector(".sort-icon use");
-      if (use) use.setAttribute("href", "#i-sort");
       if (th.dataset.sort === sortState.key) {
         th.classList.add(sortState.dir === 1 ? "sorted-asc" : "sorted-desc");
-        if (use) use.setAttribute("href", sortState.dir === 1 ? "#i-sort-asc" : "#i-sort-desc");
       }
     });
   }
@@ -797,24 +810,26 @@
 
   function scrambleInfluencers() {
     if (data.influencers.length < 2) { toast("Not enough rows to scramble"); return; }
-    if (!confirm("Scramble the order of influencers?\n\nRows will be shuffled randomly. Data stays with its row.")) return;
-    data.influencers = shuffleArray(data.influencers);
-    infSort.key = null;
-    updateSortIcons("#infTable", infSort);
-    save();
-    renderInfluencers();
-    toast("Influencers scrambled");
+    showConfirm("Scramble Influencers?", "Rows will be shuffled randomly. Data stays with its row.", () => {
+      data.influencers = shuffleArray(data.influencers);
+      infSort.key = null;
+      updateSortIcons("#infTable", infSort);
+      save();
+      renderInfluencers();
+      toast("Influencers scrambled");
+    });
   }
 
   function scrambleContracts() {
     if (data.contracts.length < 2) { toast("Not enough rows to scramble"); return; }
-    if (!confirm("Scramble the order of contracts?\n\nRows will be shuffled randomly. Data stays with its row.")) return;
-    data.contracts = shuffleArray(data.contracts);
-    conSort.key = null;
-    updateSortIcons("#conTable", conSort);
-    save();
-    renderContracts();
-    toast("Contracts scrambled");
+    showConfirm("Scramble Contracts?", "Rows will be shuffled randomly. Data stays with its row.", () => {
+      data.contracts = shuffleArray(data.contracts);
+      conSort.key = null;
+      updateSortIcons("#conTable", conSort);
+      save();
+      renderContracts();
+      toast("Contracts scrambled");
+    });
   }
 
   function addInfluencer() {
@@ -1208,6 +1223,27 @@
     td.classList.add("flash");
     setTimeout(() => td.classList.remove("flash"), 900);
   }
+
+  // --- CONFIRM DIALOG LOGIC ---
+  let confirmAction = null;
+  function showConfirm(title, msg, onOk) {
+    $("#confirmTitle").textContent = title;
+    $("#confirmMsg").innerHTML = msg;
+    confirmAction = onOk;
+    $("#confirmModal").hidden = false;
+  }
+  function closeConfirm() {
+    $("#confirmModal").hidden = true;
+    confirmAction = null;
+  }
+  $("#confirmCancelBtn").onclick = closeConfirm;
+  $("#confirmOkBtn").onclick = () => {
+    if (confirmAction) confirmAction();
+    closeConfirm();
+  };
+  $("#confirmModal").addEventListener("click", (e) => {
+    if (e.target === $("#confirmModal")) closeConfirm();
+  });
 
   function openModal(title, fields, onSave) {
     editing = { onSave };
@@ -1654,7 +1690,7 @@
       try {
         const imported = JSON.parse(ev.target.result);
         if (!Array.isArray(imported.influencers) || !Array.isArray(imported.contracts)) throw new Error("bad format");
-        if (confirm("Replace ALL current data with this backup?")) {
+        showConfirm("Restore Backup?", "Replace ALL current data with this backup? This cannot be undone.", () => {
           data = {
             influencers: imported.influencers.map(r => migrateRow(r, "influencer")),
             contracts: imported.contracts.map(r => migrateRow(r, "contract"))
@@ -1670,7 +1706,7 @@
           else if (activeTab === "contracts") renderContracts();
           else { histView = "days"; renderHistory(); }
           toast("Backup restored");
-        }
+        });
       } catch (e) { toast("Invalid backup file", { icon: "trash" }); }
     };
     reader.readAsText(file);
@@ -1772,6 +1808,7 @@
     bind("pickRandomInfBtn", pickRandomInfluencerFromHistory);
     bind("addConBtn", addContract);
     bind("downloadExcel", downloadExcel);
+    bind("downloadExcelMobile", downloadExcel);
     bind("exportJson", exportJson);
     bind("modalCloseX", closeModal);
     bind("modalCancel", closeModal);
@@ -1786,12 +1823,12 @@
     bind("scrambleConBtn", scrambleContracts);
     bind("clearHist", () => {
       if (!history.length) { toast("History already empty"); return; }
-      if (confirm("Clear ALL history? This cannot be undone.")) {
+      showConfirm("Clear History?", "Are you sure you want to clear ALL history? This cannot be undone.", () => {
         history = [];
         saveHistory();
         renderHistory();
         toast("History cleared");
-      }
+      });
     });
 
     // Focus Mode & Density Toggles
@@ -1806,24 +1843,6 @@
       document.body.classList.toggle("compact-mode");
       toast(document.body.classList.contains("compact-mode") ? "Compact mode on" : "Comfortable mode on");
     });
-
-    // Batch Select Checkboxes
-    const checkAllInf = $("#checkAllInf");
-    if (checkAllInf) {
-      checkAllInf.addEventListener("change", (e) => {
-        if (e.target.checked) data.influencers.forEach(r => selectedInfluencers.add(r._id));
-        else selectedInfluencers.clear();
-        renderInfluencers();
-      });
-    }
-    const checkAllCon = $("#checkAllCon");
-    if (checkAllCon) {
-      checkAllCon.addEventListener("change", (e) => {
-        if (e.target.checked) data.contracts.forEach(r => selectedContracts.add(r._id));
-        else selectedContracts.clear();
-        renderContracts();
-      });
-    }
 
     $$(".hist-tab").forEach(t => {
       t.addEventListener("click", () => setHistDetailFilter(t.dataset.histTab));
@@ -1902,6 +1921,7 @@
       if (e.key === "Escape") {
         if (modal && !modal.hidden) { closeModal(); return; }
         if (csvModal && !csvModal.hidden) { closeCsvModal(); return; }
+        if (!document.getElementById("confirmModal").hidden) { closeConfirm(); return; }
         if (document.body.classList.contains("focus-mode")) { 
           document.body.classList.remove("focus-mode"); 
           document.querySelector("#focusModeBtn .icon-max").style.display = "inline-block";
