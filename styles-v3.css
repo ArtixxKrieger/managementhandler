@@ -284,6 +284,8 @@ body.focus-mode .main-content {
 }
 .btn.ghost { background: transparent; border-color: var(--border); }
 .btn.ghost:hover { background: var(--surface-2); }
+.btn.danger { background: var(--danger); color: #fff; border-color: transparent; }
+.btn.danger:hover { background: #dc2626; box-shadow: 0 4px 12px rgba(239,68,68,.35); }
 .icon-btn { padding: 9px 11px; }
 
 #themeToggle .icon-moon, #themeToggleMobile .icon-moon { display: none; }
@@ -805,7 +807,7 @@ tbody tr:hover .del-btn { opacity: 1; }
 #csvPreview code { background: var(--surface); padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border); }
 
 /* ============================================================
-   MODALS (Spring Animation)
+   MODALS
    ============================================================ */
 .modal-backdrop {
   position: fixed;
@@ -885,8 +887,41 @@ tbody tr:hover .del-btn { opacity: 1; }
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
+/* CUSTOM CONFIRM DIALOG */
+.confirm-dialog {
+  max-width: 400px;
+}
+.confirm-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 24px;
+}
+.confirm-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.confirm-icon svg { width: 20px; height: 20px; }
+.confirm-content h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.confirm-content p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* ============================================================
-   TOAST (Floating Glass Pill)
+   TOAST
    ============================================================ */
 .toast {
   position: fixed;
@@ -937,7 +972,7 @@ tbody tr:hover .del-btn { opacity: 1; }
 [data-theme="dark"] .toast-action:hover { background: rgba(0,0,0,.2); }
 
 /* ============================================================
-   RESPONSIVE (Mobile)
+   RESPONSIVE
    ============================================================ */
 @media (max-width: 900px) {
   .sidebar { display: none; }
