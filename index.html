@@ -32,8 +32,6 @@
     <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
     <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
     <symbol id="i-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></symbol>
-    <symbol id="i-sort-asc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l5-5 5 5"/></symbol>
-    <symbol id="i-sort-desc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l5 5 5-5"/></symbol>
     <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
     <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -43,239 +41,274 @@
   </defs>
 </svg>
 
-<header class="app-header" id="mainHeader">
-  <div class="brand">
-    <div class="logo">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/>
-      </svg>
-    </div>
-    <div>
-      <h1>Influencer Manager</h1>
-      <p class="subtitle">
-        <span id="statusText">Ready</span>
-        <span class="dot"></span>
-        <span id="lastSavedText">Not saved yet</span>
-      </p>
-    </div>
-  </div>
-  <div class="actions">
-    <button id="focusModeBtn" class="btn ghost icon-btn" title="Toggle Focus Mode (Fullscreen)">
-      <svg class="icon-svg icon-max"><use href="#i-maximize"/></svg>
-      <svg class="icon-svg icon-min" style="display:none"><use href="#i-minimize"/></svg>
-    </button>
-    <button id="densityBtn" class="btn ghost icon-btn" title="Toggle Row Density">
-      <svg class="icon-svg"><use href="#i-columns"/></svg>
-    </button>
-    <button id="themeToggle" class="btn ghost icon-btn" title="Toggle theme">
-      <svg class="icon-svg icon-sun"><use href="#i-sun"/></svg>
-      <svg class="icon-svg icon-moon"><use href="#i-moon"/></svg>
-    </button>
-    <button id="exportJson" class="btn ghost" title="Export Backup">
-      <svg class="icon-svg"><use href="#i-save"/></svg>
-      <span class="label">Backup</span>
-    </button>
-    <label class="btn ghost" for="importJson" title="Restore Backup">
-      <svg class="icon-svg"><use href="#i-upload"/></svg>
-      <span class="label">Restore</span>
-    </label>
-    <input type="file" id="importJson" accept=".json" hidden>
-    <button id="downloadExcel" class="btn primary" title="Export Excel">
-      <svg class="icon-svg"><use href="#i-download"/></svg>
-      <span class="label">Export Excel</span>
-    </button>
-  </div>
-</header>
-
-<nav class="tabs" id="mainTabs">
-  <button class="tab active" data-tab="influencers">
-    <svg class="icon-svg"><use href="#i-users"/></svg>
-    <span>Influencers</span>
-    <span class="badge" id="infBadge">0</span>
-  </button>
-  <button class="tab" data-tab="contracts">
-    <svg class="icon-svg"><use href="#i-file"/></svg>
-    <span>Contracts</span>
-    <span class="badge" id="conBadge">0</span>
-  </button>
-  <button class="tab" data-tab="history">
-    <svg class="icon-svg"><use href="#i-clock"/></svg>
-    <span>History</span>
-  </button>
-</nav>
-
-<main>
-
-  <section id="influencers" class="tab-content active">
-    <div class="toolbar">
-      <button id="addInfBtn" class="btn primary">
-        <svg class="icon-svg"><use href="#i-plus"/></svg>
-        <span>Add Influencer</span>
-      </button>
-      <button id="pickRandomInfBtn" class="btn ghost" title="Pick random from history">
-        <svg class="icon-svg"><use href="#i-sparkles"/></svg>
-        <span>Pick Random</span>
-      </button>
-      <label class="btn ghost" for="importInfCsv" title="Import CSV">
-        <svg class="icon-svg"><use href="#i-upload"/></svg>
-        <span>Import CSV</span>
-      </label>
-      <input type="file" id="importInfCsv" accept=".csv" hidden>
-      <label class="btn ghost" for="importInfXlsx" title="Import Excel">
-        <svg class="icon-svg"><use href="#i-upload"/></svg>
-        <span>Import Excel</span>
-      </label>
-      <input type="file" id="importInfXlsx" accept=".xlsx,.xls" hidden>
-      <button id="scrambleInfBtn" class="btn ghost" title="Shuffle rows">
-        <svg class="icon-svg"><use href="#i-shuffle"/></svg>
-        <span>Scramble</span>
-      </button>
-      <div class="search-wrap">
-        <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
-        <input type="search" id="infSearch" class="search" placeholder="Search influencers...">
-      </div>
-    </div>
-
-    <div class="table-wrap desktop-only">
-      <div class="table-scroll">
-        <table id="infTable">
-          <thead>
-            <tr>
-              <th data-sort="fbName">FB名字 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="fbLink">FB链接 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="telegram">飞机 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="phone">手机号 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="date">date <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th class="col-action"></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="empty-state" id="infEmpty" hidden>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+<div class="app-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/>
         </svg>
-        <h3>No influencers yet</h3>
-        <p>Click <strong>Add Influencer</strong> or Import to start.</p>
+      </div>
+      <div class="brand-text">
+        <h1>Influencer</h1>
+        <p class="subtitle">
+          <span id="statusText">Ready</span>
+        </p>
       </div>
     </div>
 
-    <div class="card-list mobile-only" id="infCards"></div>
-  </section>
-
-  <section id="contracts" class="tab-content">
-    <div class="toolbar">
-      <button id="addConBtn" class="btn primary">
-        <svg class="icon-svg"><use href="#i-plus"/></svg>
-        <span>Add Contract</span>
+    <nav class="tabs">
+      <button class="tab active" data-tab="influencers">
+        <svg class="icon-svg"><use href="#i-users"/></svg>
+        <span>Influencers</span>
+        <span class="badge" id="infBadge">0</span>
       </button>
-      <label class="btn ghost" for="importConCsv" title="Import CSV">
-        <svg class="icon-svg"><use href="#i-upload"/></svg>
-        <span>Import CSV</span>
-      </label>
-      <input type="file" id="importConCsv" accept=".csv" hidden>
-      <label class="btn ghost" for="importConXlsx" title="Import Excel">
-        <svg class="icon-svg"><use href="#i-upload"/></svg>
-        <span>Import Excel</span>
-      </label>
-      <input type="file" id="importConXlsx" accept=".xlsx,.xls" hidden>
-      <div class="search-wrap">
-        <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
-        <input type="search" id="conSearch" class="search" placeholder="Search contracts...">
+      <button class="tab" data-tab="contracts">
+        <svg class="icon-svg"><use href="#i-file"/></svg>
+        <span>Contracts</span>
+        <span class="badge" id="conBadge">0</span>
+      </button>
+      <button class="tab" data-tab="history">
+        <svg class="icon-svg"><use href="#i-clock"/></svg>
+        <span>History</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <p class="last-saved" id="lastSavedText">Not saved yet</p>
+      <div class="action-grid">
+        <button id="focusModeBtn" class="btn ghost icon-btn" title="Toggle Focus Mode (Fullscreen)">
+          <svg class="icon-svg icon-max"><use href="#i-maximize"/></svg>
+          <svg class="icon-svg icon-min" style="display:none"><use href="#i-minimize"/></svg>
+        </button>
+        <button id="densityBtn" class="btn ghost icon-btn" title="Toggle Row Density">
+          <svg class="icon-svg"><use href="#i-columns"/></svg>
+        </button>
+        <button id="themeToggle" class="btn ghost icon-btn" title="Toggle theme">
+          <svg class="icon-svg icon-sun"><use href="#i-sun"/></svg>
+          <svg class="icon-svg icon-moon"><use href="#i-moon"/></svg>
+        </button>
+        <button id="exportJson" class="btn ghost icon-btn" title="Export Backup">
+          <svg class="icon-svg"><use href="#i-save"/></svg>
+        </button>
+        <label class="btn ghost icon-btn" for="importJson" title="Restore Backup" style="margin:0">
+          <svg class="icon-svg"><use href="#i-upload"/></svg>
+        </label>
+        <input type="file" id="importJson" accept=".json" hidden>
       </div>
     </div>
+  </aside>
 
-    <div class="table-wrap desktop-only">
-      <div class="table-scroll">
-        <table id="conTable">
-          <thead>
-            <tr>
-              <th data-sort="agentLine">代理线 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="taskPosted">发布任务 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="releaseTime">发布时间 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="time">时间 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="contract">合同 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="first">第一笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="second">第二笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="third">第三笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="vloggerTg">博主电报 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="domain">推广域名 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="state">状态 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="myTg">我的电报 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th data-sort="remarks">备注 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
-              <th class="col-action"></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="empty-state" id="conEmpty" hidden>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        <h3>No contracts yet</h3>
-        <p>Click <strong>Add Contract</strong> to create your first entry.</p>
-      </div>
-    </div>
-
-    <div class="card-list mobile-only" id="conCards"></div>
-  </section>
-
-  <section id="history" class="tab-content">
-    <div id="histDaysView">
-      <div class="toolbar">
-        <div class="search-wrap">
-          <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
-          <input type="search" id="histSearch" class="search" placeholder="Search history...">
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+    
+    <header class="mobile-header">
+      <div class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/>
+          </svg>
         </div>
-        <select id="histMonthFilter" class="btn ghost filter-select">
-          <option value="">All months</option>
-        </select>
-        <button id="exportHistCsv" class="btn ghost">
+        <h1>Influencer</h1>
+      </div>
+      <div class="actions">
+        <button id="themeToggleMobile" class="btn ghost icon-btn" title="Toggle theme">
+          <svg class="icon-svg icon-sun"><use href="#i-sun"/></svg>
+          <svg class="icon-svg icon-moon"><use href="#i-moon"/></svg>
+        </button>
+        <button id="downloadExcelMobile" class="btn primary icon-btn" title="Export Excel">
           <svg class="icon-svg"><use href="#i-download"/></svg>
-          <span>Export Excel</span>
-        </button>
-        <button id="clearHist" class="btn ghost">
-          <svg class="icon-svg"><use href="#i-trash"/></svg>
-          <span>Clear</span>
         </button>
       </div>
-      <div class="history-days" id="histDays"></div>
-      <div class="hist-load-more" id="histLoadMore" hidden>
-        <button id="histLoadMoreBtn" class="btn ghost">
-          <svg class="icon-svg"><use href="#i-plus"/></svg>
-          <span>Load more days</span>
+    </header>
+
+    <div class="main-header-desktop">
+      <h2 id="pageTitle">Influencers</h2>
+      <div class="header-actions">
+        <button id="downloadExcel" class="btn primary" title="Export Excel">
+          <svg class="icon-svg"><use href="#i-download"/></svg>
+          <span class="label">Export Excel</span>
         </button>
       </div>
     </div>
 
-    <div id="histDetailView" hidden>
+    <!-- TAB: INFLUENCERS -->
+    <section id="influencers" class="tab-content active">
       <div class="toolbar">
-        <button id="histBackBtn" class="btn ghost">
-          <svg class="icon-svg"><use href="#i-arrow-left"/></svg>
-          <span>Back</span>
+        <button id="addInfBtn" class="btn primary">
+          <svg class="icon-svg"><use href="#i-plus"/></svg>
+          <span>Add</span>
         </button>
-        <h2 class="hist-detail-title" id="histDetailTitle">Day</h2>
+        <button id="pickRandomInfBtn" class="btn ghost" title="Pick random from history">
+          <svg class="icon-svg"><use href="#i-sparkles"/></svg>
+          <span>Random</span>
+        </button>
+        <label class="btn ghost" for="importInfCsv" title="Import CSV">
+          <svg class="icon-svg"><use href="#i-upload"/></svg>
+          <span>CSV</span>
+        </label>
+        <input type="file" id="importInfCsv" accept=".csv" hidden>
+        <label class="btn ghost" for="importInfXlsx" title="Import Excel">
+          <svg class="icon-svg"><use href="#i-upload"/></svg>
+          <span>Excel</span>
+        </label>
+        <input type="file" id="importInfXlsx" accept=".xlsx,.xls" hidden>
+        <button id="scrambleInfBtn" class="btn ghost" title="Shuffle rows">
+          <svg class="icon-svg"><use href="#i-shuffle"/></svg>
+          <span>Scramble</span>
+        </button>
+        
         <div class="search-wrap">
           <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
-          <input type="search" id="histDetailSearch" class="search" placeholder="Search this day...">
+          <input type="search" id="infSearch" class="search" placeholder="Search...">
         </div>
       </div>
-      <div class="hist-detail-tabs">
-        <button class="hist-tab active" data-hist-tab="all">All</button>
-        <button class="hist-tab" data-hist-tab="influencers">Influencers</button>
-        <button class="hist-tab" data-hist-tab="contracts">Contracts</button>
-      </div>
-      <div id="histDetailBody"></div>
-    </div>
-  </section>
 
-</main>
+      <div class="table-wrap desktop-only">
+        <div class="table-scroll">
+          <table id="infTable">
+            <thead>
+              <tr>
+                <th data-sort="fbName">FB名字 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="fbLink">FB链接 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="telegram">飞机 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="phone">手机号 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="date">date <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="infEmpty" hidden>
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <h3>No influencers yet</h3>
+          <p>Click <strong>Add Influencer</strong> or Import to start.</p>
+        </div>
+      </div>
+
+      <div class="card-list mobile-only" id="infCards"></div>
+    </section>
+
+    <!-- TAB: CONTRACTS -->
+    <section id="contracts" class="tab-content">
+      <div class="toolbar">
+        <button id="addConBtn" class="btn primary">
+          <svg class="icon-svg"><use href="#i-plus"/></svg>
+          <span>Add</span>
+        </button>
+        <label class="btn ghost" for="importConCsv" title="Import CSV">
+          <svg class="icon-svg"><use href="#i-upload"/></svg>
+          <span>CSV</span>
+        </label>
+        <input type="file" id="importConCsv" accept=".csv" hidden>
+        <label class="btn ghost" for="importConXlsx" title="Import Excel">
+          <svg class="icon-svg"><use href="#i-upload"/></svg>
+          <span>Excel</span>
+        </label>
+        <input type="file" id="importConXlsx" accept=".xlsx,.xls" hidden>
+        
+        <div class="search-wrap">
+          <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+          <input type="search" id="conSearch" class="search" placeholder="Search...">
+        </div>
+      </div>
+
+      <div class="table-wrap desktop-only">
+        <div class="table-scroll">
+          <table id="conTable">
+            <thead>
+              <tr>
+                <th data-sort="agentLine">代理线 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="taskPosted">发布任务 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="releaseTime">发布时间 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="time">时间 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="contract">合同 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="first">第一笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="second">第二笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="third">第三笔 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="vloggerTg">博主电报 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="domain">推广域名 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="state">状态 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="myTg">我的电报 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th data-sort="remarks">备注 <svg class="sort-icon"><use href="#i-sort"/></svg></th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="conEmpty" hidden>
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="float-anim">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <h3>No contracts yet</h3>
+          <p>Click <strong>Add Contract</strong> to create your first entry.</p>
+        </div>
+      </div>
+
+      <div class="card-list mobile-only" id="conCards"></div>
+    </section>
+
+    <!-- TAB: HISTORY -->
+    <section id="history" class="tab-content">
+      <div id="histDaysView">
+        <div class="toolbar">
+          <div class="search-wrap">
+            <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+            <input type="search" id="histSearch" class="search" placeholder="Search history...">
+          </div>
+          <select id="histMonthFilter" class="btn ghost filter-select">
+            <option value="">All months</option>
+          </select>
+          <button id="exportHistCsv" class="btn ghost">
+            <svg class="icon-svg"><use href="#i-download"/></svg>
+            <span>Excel</span>
+          </button>
+          <button id="clearHist" class="btn ghost">
+            <svg class="icon-svg"><use href="#i-trash"/></svg>
+            <span>Clear</span>
+          </button>
+        </div>
+        <div class="history-days" id="histDays"></div>
+        <div class="hist-load-more" id="histLoadMore" hidden>
+          <button id="histLoadMoreBtn" class="btn ghost">
+            <svg class="icon-svg"><use href="#i-plus"/></svg>
+            <span>Load more days</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="histDetailView" hidden>
+        <div class="toolbar">
+          <button id="histBackBtn" class="btn ghost">
+            <svg class="icon-svg"><use href="#i-arrow-left"/></svg>
+            <span>Back</span>
+          </button>
+          <h2 class="hist-detail-title" id="histDetailTitle">Day</h2>
+          <div class="search-wrap">
+            <svg class="icon-svg search-icon"><use href="#i-search"/></svg>
+            <input type="search" id="histDetailSearch" class="search" placeholder="Search this day...">
+          </div>
+        </div>
+        <div class="hist-detail-tabs">
+          <button class="hist-tab active" data-hist-tab="all">All</button>
+          <button class="hist-tab" data-hist-tab="influencers">Influencers</button>
+          <button class="hist-tab" data-hist-tab="contracts">Contracts</button>
+        </div>
+        <div id="histDetailBody"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
 
 <div class="modal-backdrop" id="modal" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
