@@ -12,13 +12,13 @@
   const DAILY_RESET_KEY = "inf_contract_last_inf_reset";
   const HISTORY_LIMIT = 20000;
 
-  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer/Stop"];
+  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer"];
   const STATE_CLASS = {
     "Done": "state-done",
     "Account banned": "state-banned",
     "Pending": "state-pending",
     "In progress": "state-progress",
-    "Scammer/Stop": "state-scammer"
+    "Scammer": "state-scammer"
   };
 
   const INF_FIELDS = ["fbName", "fbLink", "telegram", "phone", "date"];
@@ -36,6 +36,7 @@
   let activeTab = "influencers";
   let csvImportTarget = null;
   const pickedHistoryIds = new Set();
+  let lastDupToastTime = 0;
 
   let histView = "days";
   let histSelectedDay = null;
@@ -93,6 +94,11 @@
     return String(v == null ? "" : v).trim().toLowerCase();
   }
 
+  function cleanLink(url) {
+    if (!url) return "";
+    return url.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "").toLowerCase();
+  }
+
   function dupSet(rows, fields) {
     const out = {};
     if (!fields.length) return out;
@@ -100,7 +106,8 @@
     fields.forEach(f => { map[f] = new Map(); });
     rows.forEach(r => {
       fields.forEach(f => {
-        const v = norm(r[f]);
+        let v = norm(r[f]);
+        if (f === "fbLink") v = cleanLink(v);
         if (!v) return;
         const m = map[f];
         m.set(v, (m.get(v) || 0) + 1);
@@ -486,7 +493,7 @@
     msgEl.textContent = msg;
     if (iconEl) {
       iconEl.innerHTML = `<use href="#i-${opts.icon || "check"}"/>`;
-      iconEl.style.color = opts.icon === "trash" ? "var(--danger)" : "var(--success)";
+      iconEl.style.color = opts.icon === "trash" || opts.icon === "alert" ? "var(--danger)" : "var(--success)";
     }
     if (opts.actionLabel && typeof opts.onAction === "function") {
       actionBtn.hidden = false;
@@ -921,14 +928,40 @@
     });
   }
 
+  function checkDup(field, value, rowId) {
+    if (!value) return false;
+    const val = field === "fbLink" ? cleanLink(value) : norm(value);
+    let found = false;
+    
+    if (field === "fbName" || field === "fbLink" || field === "telegram") {
+      data.influencers.forEach(r => {
+        if (r._id === rowId) return;
+        let rv = norm(r[field]);
+        if (field === "fbLink") rv = cleanLink(rv);
+        if (rv && rv === val) found = true;
+      });
+    }
+    
+    if (found) {
+      const now = Date.now();
+      if (now - lastDupToastTime > 4000) {
+        toast(`Duplicate ${field === "telegram" ? "TG Username" : field === "fbName" ? "FB Name" : "FB Link"} detected!`, { icon: "alert" });
+        lastDupToastTime = now;
+      }
+    }
+    return found;
+  }
+
   function createTd(k, row, filter, rowId, updateFn) {
     const td = document.createElement("td");
     td.contentEditable = "true"; 
     td.dataset.k = k;
     td.innerHTML = escAndHighlight(row[k], filter);
     
-    if (INF_DUP_FIELDS.includes(k) && window._currentDups && window._currentDups[k] && window._currentDups[k].has(norm(row[k]))) {
-      td.classList.add("dup");
+    if (k === "fbName" || k === "fbLink" || k === "telegram") {
+      if (checkDup(k, row[k], rowId)) {
+        td.classList.add("dup");
+      }
     }
 
     if (row[k]) {
@@ -943,6 +976,21 @@
       td.appendChild(copyBtn);
     }
 
+    td.addEventListener("input", () => {
+      const newVal = td.innerText.trim();
+      const live = updateFn(rowId);
+      if (!live) return;
+      
+      // Live duplicate check
+      if (k === "fbName" || k === "fbLink" || k === "telegram") {
+        if (checkDup(k, newVal, rowId)) {
+          td.classList.add("dup");
+        } else {
+          td.classList.remove("dup");
+        }
+      }
+    });
+
     td.addEventListener("blur", () => {
       const newVal = td.innerText.trim();
       const live = updateFn(rowId);
@@ -952,7 +1000,6 @@
         save(); flashCell(td);
         updateHistorySnapshot(k === "state" || k === "remarks" ? "contract" : "influencer", live);
       }
-      // Re-render specific cell to remove copy btn if empty and re-add if filled
       setTimeout(() => renderInfluencers(), 10); 
     });
 
@@ -970,8 +1017,6 @@
     tbody.innerHTML = ""; cards.innerHTML = "";
     let visible = 0;
     const rows = sortedData(data.influencers, infSort);
-    window._currentDups = dupSet(data.influencers, INF_DUP_FIELDS);
-    const dups = window._currentDups;
 
     rows.forEach((row) => {
       const rowId = row._id;
@@ -994,9 +1039,14 @@
       delTd.appendChild(delBtn); tr.appendChild(delTd);
       tbody.appendChild(tr);
 
+      // Determine duplicates for mobile card
+      const infDup = 
+        checkDup("telegram", row.telegram, rowId) || 
+        checkDup("fbName", row.fbName, rowId) || 
+        checkDup("fbLink", row.fbLink, rowId);
+
       const card = document.createElement("div");
       card.className = "card";
-      const infDup = INF_DUP_FIELDS.some(k => dups[k] && dups[k].has(norm(row[k])));
       card.innerHTML = `
         <div class="card-head">
           <div class="card-body">
