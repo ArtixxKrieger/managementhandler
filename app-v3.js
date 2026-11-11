@@ -12,13 +12,16 @@
   const DAILY_RESET_KEY = "inf_contract_last_inf_reset";
   const HISTORY_LIMIT = 20000;
 
-  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer"];
+  // 1. UPDATED STATES ARRAY
+  const STATES = ["Pending", "Done", "Account banned", "In progress", "Scammer/Stop"];
+  
+  // 2. UPDATED STATE CLASS MAP
   const STATE_CLASS = {
     "Done": "state-done",
     "Account banned": "state-banned",
     "Pending": "state-pending",
     "In progress": "state-progress",
-    "Scammer": "state-scammer"
+    "Scammer/Stop": "state-scammer"
   };
 
   const INF_FIELDS = ["fbName", "fbLink", "telegram", "phone", "date"];
@@ -585,6 +588,10 @@
         date: row.date || ""
       };
     } else {
+      // Fix old "Scammer" state
+      let fixedState = row.state || "Pending";
+      if (fixedState === "Scammer") fixedState = "Scammer/Stop";
+
       return {
         _id: row._id || uid(),
         agentLine: row.agentLine || "",
@@ -597,7 +604,7 @@
         third: row.third || "",
         vloggerTg: row.vloggerTg || "",
         domain: row.domain || "",
-        state: row.state || "Pending",
+        state: fixedState,
         myTg: row.myTg || "",
         remarks: row.remarks || ""
       };
@@ -662,6 +669,9 @@
             date: h.data.date || ""
           };
         } else {
+          let fixedState = h.data.state || "Pending";
+          if (fixedState === "Scammer") fixedState = "Scammer/Stop";
+          
           h.data = {
             agentLine: h.data.agentLine || "",
             taskPosted: h.data.taskPosted || "",
@@ -673,7 +683,7 @@
             third: h.data.third || "",
             vloggerTg: h.data.vloggerTg || "",
             domain: h.data.domain || "",
-            state: h.data.state || "Pending",
+            state: fixedState,
             myTg: h.data.myTg || "",
             remarks: h.data.remarks || ""
           };
@@ -1704,7 +1714,7 @@
           if (rowData && rowData.state === "Account banned") {
              ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; 
              ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; 
-          } else if (rowData && rowData.state === "Scammer") {
+          } else if (rowData && (rowData.state === "Scammer" || rowData.state === "Scammer/Stop")) {
              ws[cellRef].s.fill = { patternType: "solid", fgColor: { rgb: "FFFF0000" } }; 
              ws[cellRef].s.font = { color: { rgb: "FFFFFFFF" }, bold: true }; 
           } else if (rowData && rowData.state === "Done") {
